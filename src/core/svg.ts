@@ -12,7 +12,7 @@ const f = (n: number) => +n.toFixed(4)
 function shape(p: Path) {
   const s = p.shape
   if (s.kind === 'circle') return `<circle cx="${f(s.cx)}" cy="${f(s.cy)}" r="${f(s.r)}"/>`
-  return `<path d="M${s.pts.map(([x, y]) => `${f(x)} ${f(y)}`).join('L')}Z"/>`
+  return `<path d="M${s.pts.map(([x, y]) => `${f(x)} ${f(y)}`).join('L')}${s.kind === 'poly' ? 'Z' : ''}"/>`
 }
 
 export function toSVG(paths: Path[]): string {
