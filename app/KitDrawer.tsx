@@ -7,6 +7,7 @@ import { emptyKit, encodeKit, kitToJSON, parseKit, starterKit, type Kit } from '
 import { SHEET_PRESETS } from '../src/core/layout'
 import { toSVG } from '../src/core/svg'
 import { DecimalInput } from './inputs'
+import { track } from '@vercel/analytics'
 
 type Props = {
   open: boolean; setOpen: (v: boolean) => void
@@ -45,6 +46,7 @@ export function KitDrawer(p: Props) {
     if (badLines.size) return p.setNotice(`Fix ${[...badLines].map(partId).join(', ')} before exporting the kit.`)
     const { files, sheets: n } = exportKit(kit, ctx, p.format, machine, kitToJSON(kit))
     p.deliver(slug(kit.name), files, p.format)
+    track('kit_export', { format: p.format, sheets: n, pieces })
     p.setNotice(`Exported ${n} sheet${n === 1 ? '' : 's'}, the parts list and the kit file.`)
   }
   const share = async () => {

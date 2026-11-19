@@ -267,3 +267,11 @@ input.text {
 .link.inline { font-size: 12px; padding: 0; }
 input.num::placeholder { color: var(--mute); }
 .sheets figcaption .num-strong { color: var(--chalk-dim); font-variant-numeric: tabular-nums; }
+
+/* Plain document pages (privacy): one readable column on the chart ground. */
+.doc { max-width: 68ch; margin: 0 auto; padding: 32px 16px 64px; line-height: 1.6; color: var(--chalk-dim); }
+.doc h1 { font-size: 26px; color: var(--chalk); margin: 16px 0 12px; }
+.doc h2 { font-size: 17px; color: var(--chalk); margin: 32px 0 8px; }
+.doc code { font-size: 13px; color: var(--chalk); }
+.doc-list dt { color: var(--chalk); font-weight: 600; margin-top: 12px; }
+.doc-list dd { margin: 4px 0 0; }

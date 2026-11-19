@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import { Public_Sans, Spectral } from 'next/font/google'
 import './globals.css'
+import { Telemetry } from './Telemetry'
 
 // Self-hosted at build time by next/font, so no request leaves for Google at runtime.
 const sans = Public_Sans({ subsets: ['latin'], weight: ['400', '500', '600'], variable: '--font-sans' })
@@ -15,7 +16,7 @@ export const viewport: Viewport = { themeColor: '#0f1a33', colorScheme: 'dark' }
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${sans.variable} ${serif.variable}`}>
-      <body>{children}</body>
+      <body>{children}<Telemetry /></body>
     </html>
   )
 }

@@ -5,6 +5,7 @@ import { COMPONENTS, parseComponents, type ComponentDef } from '../src/core/comp
 import { DEFAULT_MACHINE, exportPart, type Format, type Machine, type OutFile } from '../src/core/export'
 import { decodeKit, emptyKit, kitToJSON, parseKit, type Kit } from '../src/core/kit'
 import { zip } from '../src/core/zip'
+import { track } from '@vercel/analytics'
 import { DecimalInput, Num } from './inputs'
 import { KitDrawer } from './KitDrawer'
 import {
@@ -253,7 +254,7 @@ export default function Page() {
   const [title, file] = part.type === 'coupon' ? ['Calibration coupon', `coupon-${materialId}`] : describe(part, holeCount, profile.pitch)
   const elongated = part.type === 'strip' || part.type === 'slotted' || part.type === 'rack'
 
-  const exportCurrent = () => deliver(file, exportPart(file, paths, format, machine), format)
+  const exportCurrent = () => { deliver(file, exportPart(file, paths, format, machine), format); track('part_export', { type: part.type, format }) }
   const editLine = (part: GridPart) => {
     const [k, v] = partToParams(part)
     setParams({ ...params, [k]: { ...params[k], ...v } })
@@ -321,6 +322,7 @@ export default function Page() {
           </section>
         ))}
         <p className="soon">Every part bolts to every other on the same grid.</p>
+        <p className="soon"><a className="link inline" href="/privacy">Privacy</a></p>
       </nav>
 
       <main className="stage">
