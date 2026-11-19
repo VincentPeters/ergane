@@ -197,11 +197,16 @@ export default function Page() {
     if (stored) adoptKit(stored)
     // A share link carries the kit in the URL fragment, which never reaches a server.
     if (location.hash.startsWith('#kit=')) {
-      decodeKit(location.hash.slice(5)).then((k) => {
-        if (typeof k === 'string') return setNotice(k)
-        adoptKit(k); setDrawer(true); setNotice(`Loaded “${k.name}” from the link.`)
-        history.replaceState(null, '', location.pathname)
-      })
+      // Take the kit out of the address bar first, so nothing later (analytics, error reports, a copied URL)
+      // ever sees it, whether or not it decodes.
+      const payload = location.hash.slice(5)
+      history.replaceState(null, '', location.pathname)
+      decodeKit(payload)
+        .then((k) => {
+          if (typeof k === 'string') return setNotice(k)
+          adoptKit(k); setDrawer(true); setNotice(`Loaded “${k.name}” from the link.`)
+        })
+        .catch(() => setNotice('This link does not contain a readable kit.'))
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
   const settings = JSON.stringify([profile, mix, base, fit])
