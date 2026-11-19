@@ -351,7 +351,7 @@
   ],
   "narrative": {
     "northStar": "Ergane's Atlas",
-    "overview": "The kit is charted like a sky. Every surface sits on chart navy, and the chart plate is the light source: parts are plotted in chalk, holes are magnitude dots, the outline is the line joining them, and Athena Ergane's owl, patron of craftspeople, is engraved faintly beneath the field the way a star atlas sets its constellation figure under the stars. Dark is a world choice, not a theme toggle.\n\nThe system is an operating tool for makers standing next to a laser. Density is moderate and steady: a fixed shell of hairline-divided columns, tabular figures for every value, and annotation in red-flashlight amber so the numbers read like a chart's measurements. Ornament lives only in the plate; the shell around it stays quiet. What the screen plots is what the laser cuts, in real millimetres.\n\nThe world refuses the grey CAD inspector with a white canvas.",
+    "overview": "The kit is charted like a sky. Every surface sits on chart navy, and the chart plate is the light source: parts are plotted in chalk, holes are magnitude dots, and the outline is the line joining them. The name honours Athena Ergane, patron of craftspeople; no figure is drawn, and the mark is an abstract two-hole strip. Dark is a world choice, not a theme toggle.\n\nThe system is an operating tool for makers standing next to a laser. Density is moderate and steady: a fixed shell of hairline-divided columns, tabular figures for every value, and annotation in red-flashlight amber so the numbers read like a chart's measurements. Ornament lives only in the plate; the shell around it stays quiet. What the screen plots is what the laser cuts, in real millimetres.\n\nThe world refuses the grey CAD inspector with a white canvas.",
     "keyCharacteristics": [
       "Chart navy ground across shell and work area; chalk for parts and text.",
       "Flashlight amber for annotation, selection and focus; red only for failed rules.",
@@ -398,14 +398,14 @@
       "**Do** size magnitude dots from the hole diameter (dot radius = 0.5 of hole radius).",
       "**Do** write rule copy as the problem plus the remedy: what is short, by how much, and what to change (\"To fix: ...\").",
       "**Do** set every value in Public Sans with tabular figures and its unit in Mute.",
-      "**Do** keep the owl figure a faint hairline engraving (0.09 opacity) anchored to the plate."
+      "**Do** keep the mark abstract: the two-hole strip, never a creature or a face."
     ],
     "donts": [
       "**Don't** add blurred or offset shadows; separate with hairlines and tonal steps.",
       "**Don't** theme, tint or restyle the exported file's colours.",
       "**Don't** use Fault Red for anything but a failed rule.",
       "**Don't** add a second accent colour or a second animated moment beside the Laser colours re-ink.",
-      "**Don't** show the owl figure on the coupon or a compact plate, or raise it above a faint underlay.",
+      "**Don't** put a figure or illustration behind the plot; the part is the only drawing on the plate.",
       "**Don't** put the screen on a white or grey canvas; the plate is chart navy."
     ]
   }

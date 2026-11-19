@@ -118,7 +118,7 @@ components:
 
 **Creative North Star: "Ergane's Atlas"**
 
-The kit is charted like a sky. Every surface sits on chart navy, and the chart plate is the light source: parts are plotted in chalk, holes are magnitude dots, the outline is the line joining them, and Athena Ergane's owl, patron of craftspeople, is engraved faintly beneath the field the way a star atlas sets its constellation figure under the stars. Dark is a world choice, not a theme toggle.
+The kit is charted like a sky. Every surface sits on chart navy, and the chart plate is the light source: parts are plotted in chalk, holes are magnitude dots, and the outline is the line joining them. The name honours Athena Ergane, patron of craftspeople; no figure is drawn, and the mark is an abstract two-hole strip. Dark is a world choice, not a theme toggle.
 
 The system is an operating tool for makers standing next to a laser. Density is moderate and steady: a fixed shell of hairline-divided columns, tabular figures for every value, and annotation in red-flashlight amber so the numbers read like a chart's measurements. Ornament lives only in the plate; the shell around it stays quiet. What the screen plots is what the laser cuts, in real millimetres.
 
@@ -188,7 +188,7 @@ A fixed three-column instrument shell under a 56px top bar: library rail 228px, 
 
 Below 960px the shell collapses to one column: top bar wraps, the library becomes a horizontal scroller without section names, then the plate (min 420px, up to 70dvh), then parameters, then the drawer with its columns stacked.
 
-The plate itself adapts: when the plate is narrower than 560px it goes compact, dropping rulers, leaders, the pitch note and the owl figure, and keeps outline, holes, overall dimensions and faults.
+The plate itself adapts: when the plate is narrower than 560px it goes compact, dropping rulers, leaders and the pitch note, and keeps outline, holes, overall dimensions and faults.
 
 Spacing runs on 6 / 8 / 12 / 16 / 20px; form rows hold a 40px minimum height for gloved hands.
 
@@ -240,7 +240,7 @@ The work area is a star-atlas plate on Plate Field with an 8px radius and hairli
 - **Grid and rulers:** pitch gridlines through hole centres; mm rulers in Mute.
 - **Annotations:** amber dimension lines, leaders and the pitch note; the hole diameter in Spectral italic.
 - **Faults:** failing webs drawn on the plot in Fault Red with end dots and the shortfall value.
-- **Figure:** the Ergane owl, engraved in hairlines at 0.09 opacity, anchored to the plate centre beneath the plot. Absent on the coupon and on compact plates.
+- **Mark:** a two-hole strip tilted 45° in chalk hairline with an amber pip at its centre, 26px beside the wordmark; the same mark on a Chart Navy rounded square is the browser-tab icon. Nothing is drawn behind the plot.
 - **Legend:** bottom row, 12px Mute, with the live scale readout right-aligned.
 - **Laser colours (the one motion moment):** the same paths re-ink from chalk to cut-layer preview colours, the magnitude dots shrink and fade away, all over 320ms cubic-bezier(0.16,1,0.3,1). Reduced motion removes the transition.
 
@@ -266,12 +266,12 @@ The bottom row of the shell; the bar is always visible, the body opens below it.
 - **Do** size magnitude dots from the hole diameter (dot radius = 0.5 of hole radius).
 - **Do** write rule copy as the problem plus the remedy: what is short, by how much, and what to change ("To fix: ...").
 - **Do** set every value in Public Sans with tabular figures and its unit in Mute.
-- **Do** keep the owl figure a faint hairline engraving (0.09 opacity) anchored to the plate.
+- **Do** keep the mark abstract: the two-hole strip, never a creature or a face.
 
 ### Don't:
 - **Don't** add blurred or offset shadows; separate with hairlines and tonal steps.
 - **Don't** theme, tint or restyle the exported file's colours.
 - **Don't** use Fault Red for anything but a failed rule.
 - **Don't** add a second accent colour or a second animated moment beside the Laser colours re-ink.
-- **Don't** show the owl figure on the coupon or a compact plate, or raise it above a faint underlay.
+- **Don't** put a figure or illustration behind the plot; the part is the only drawing on the plate.
 - **Don't** put the screen on a white or grey canvas; the plate is chart navy.

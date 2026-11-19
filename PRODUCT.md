@@ -37,7 +37,7 @@ One shared hole grid (8 mm Technic pitch, M3 bolts by default) across every part
 ## Brand Commitments
 
 - The name is Ergane, after Athena Ergane, patron of craftspeople. Tagline: "open construction grid". ("Cutgrid" was the working title and survives in the repository and project names.)
-- The brand figure is Athena Ergane, shown as her owl: the mark beside the name and the engraved figure behind the chart.
+- The brand takes its name from Athena Ergane; no figure is drawn. The mark is abstract: a two-hole strip, the kit's simplest part, tilted 45° with an amber pip at its centre. (An owl mark and engraved owl figure were tried and dropped.)
 - Open source and open design are core to the identity: the tool, and the kit designs it produces, are meant to be shared, remixed and built on.
 
 ## Evidence on Hand

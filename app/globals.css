@@ -119,8 +119,8 @@ button:disabled { cursor: not-allowed; }
 .plate { flex: 1; min-height: 0; position: relative; border: 1px solid var(--line); border-radius: 8px; background: var(--field); overflow: hidden; }
 .plate.true { overflow: auto; }
 .plate svg { display: block; overflow: visible; }
-.plate.fit > svg:not(.figure) { position: absolute; top: 0; left: 0; width: 100%; height: calc(100% - 40px); } /* clear of the legend */
-.plate.true > svg:not(.figure) { position: relative; }
+.plate.fit > svg { position: absolute; top: 0; left: 0; width: 100%; height: calc(100% - 40px); } /* clear of the legend */
+.plate.true > svg { position: relative; }
 .plate .grid { fill: none; stroke: var(--grid); stroke-width: 0.6px; vector-effect: non-scaling-stroke; opacity: 0.45; }
 .plate .stroke { stroke-width: 1.4px; vector-effect: non-scaling-stroke; }
 .plate .ring { fill: none; stroke: var(--amber); stroke-width: 1px; stroke-dasharray: 5 4; vector-effect: non-scaling-stroke; }
@@ -128,13 +128,6 @@ button:disabled { cursor: not-allowed; }
 .plate .ruler text { fill: var(--mute); }
 .plate .note path { stroke: var(--amber); stroke-width: 1px; vector-effect: non-scaling-stroke; fill: none; }
 .plate .note text { fill: var(--amber); }
-/* The patron figure sits under the field, anchored to the plate, engraved in hairlines. */
-.plate .figure {
-  position: absolute; left: 50%; top: 50%; width: auto; height: 72%; transform: translate(-50%, -54%);
-  fill: none; stroke: var(--chalk); stroke-width: 0.6px; vector-effect: non-scaling-stroke; opacity: 0.09; pointer-events: none;
-}
-.plate .figure * { vector-effect: non-scaling-stroke; }
-.plate .figure .shade { stroke-width: 0.4px; opacity: 0.7; }
 .plate .constellation { fill: none; stroke: var(--chalk); stroke-width: 0.8px; stroke-dasharray: 2 3; vector-effect: non-scaling-stroke; opacity: 0.4; }
 .plate .note text.it-num { font-family: var(--font-serif), Georgia, serif; font-style: italic; }
 .plate .fault path { stroke: var(--err); stroke-width: 2px; vector-effect: non-scaling-stroke; }

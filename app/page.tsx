@@ -15,7 +15,7 @@ import {
   ANGLES, FIT_OFFSET, HOLES, MATERIALS, PRESS_FIT, PROFILES, RULE_COUNT, bbox, clampPart, couponKerfs, couponPressFits, defaultMix, generate, measure, minWebFor, validate,
   holeSpec, sanitizeProfile, type Ctx, type Fit, type GridPart, type HoleMix, type Material, type Part, type Profile,
 } from '../src/core/geometry'
-import { Chart, OwlMark, type Fault } from './Chart'
+import { Chart, Mark, type Fault } from './Chart'
 
 type Kind = Part['type']
 type ShapeKind = Exclude<Kind, 'coupon'>
@@ -264,7 +264,7 @@ export default function Page() {
   return (
     <div className="app">
       <header className="top">
-        <div className="brand"><OwlMark />Ergane <small>open design</small></div>
+        <div className="brand"><Mark />Ergane <small>open design</small></div>
         <label className="f">Grid
           <select value={profileId} onChange={(e) => {
             const p = PROFILES.find((x) => x.id === e.target.value)!

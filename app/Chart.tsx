@@ -19,7 +19,7 @@ export type ChartProps = {
   kerf: number
   laser: boolean
   zoom: 'fit' | 'true'
-  annotate: boolean // rulers, dimensions, leaders and the figure; off for the coupon
+  annotate: boolean // rulers, dimensions and leaders; off for the coupon
   faults: Fault[]
   corner: number // outline corner radius, so the selection ring follows the part
 }
@@ -42,7 +42,7 @@ export function Chart({ paths, nominal, pitch, kerf, laser, zoom, annotate, faul
   const raw = bbox(paths)
   const b = { x: r4(raw.x), y: r4(raw.y), w: r4(raw.w), h: r4(raw.h) }
   // Narrow plates keep only what the part needs: outline, holes, overall dimensions and faults.
-  // Rulers, leaders, pitch note and the figure would otherwise shrink the part to a sliver.
+  // Rulers, leaders and the pitch note would otherwise shrink the part to a sliver.
   const compact = box.w > 0 && box.w < 560
   const full = annotate && !compact
   // Room for the left ruler labels, the top ruler and notes, the right and bottom dimensions.
@@ -104,7 +104,6 @@ export function Chart({ paths, nominal, pitch, kerf, laser, zoom, annotate, faul
 
   return (
     <div className={`plate ${zoom}${laser ? ' laser' : ''}`} ref={ref}>
-      {full && <Owl />}
       <svg viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`} style={size} role="img"
         aria-label={`Preview, ${nominal.w.toFixed(2)} by ${nominal.h.toFixed(2)} millimetres, ${circles.length} holes`}>
         <defs>
@@ -208,48 +207,15 @@ export function Chart({ paths, nominal, pitch, kerf, laser, zoom, annotate, faul
   )
 }
 
-// Ergane's owl, engraved in hairlines behind the plate the way a star atlas sets its figure under the field.
-// Engraving built the way a plate engraver shades: contour lines follow the body, the wings are
-// ruled in parallel feather lines, the facial discs radiate, and diagonal hatching carries the shadow side.
-const BODY = 'M0 -38C14 -38 22 -26 22 -10C22 12 14 30 0 40C-14 30 -22 12 -22 -10C-22 -26 -14 -38 0 -38Z'
-const fx = (n: number) => Math.round(n * 100) / 100
-const CONTOURS = [0.84, 0.68, 0.52]
-const WINGS = [0, 1.6, 3.2, 4.8, 6.4].map((o) =>
-  `M${-22 + o} ${-6 + o}C${-17 + o} ${6 + o} ${-15 + o} ${20} ${-8 + o * 0.6} ${34 - o * 0.4}` +
-  `M${22 - o} ${-6 + o}C${17 - o} ${6 + o} ${15 - o} ${20} ${8 - o * 0.6} ${34 - o * 0.4}`).join('')
-const DISC = [-8, 8].flatMap((cx) => Array.from({ length: 18 }, (_, i) => {
-  const a = (i / 18) * Math.PI * 2
-  return `M${fx(cx + Math.cos(a) * 7.6)} ${fx(-22 + Math.sin(a) * 7.6)}L${fx(cx + Math.cos(a) * 10)} ${fx(-22 + Math.sin(a) * 10)}`
-})).join('')
-const SHADOW = Array.from({ length: 22 }, (_, i) => `M${-4 + i * 1.5} -40l-24 84`).join('')
-const BREAST = [-2, 4, 10, 16, 22, 28].flatMap((y, row) =>
-  [-10, -6, -2, 2, 6, 10].map((x) => `M${x + (row % 2) * 2} ${y}l1 2.6l1 -2.6`)).join('')
-
-function Owl() {
-  return (
-    <svg className="figure" viewBox="-40 -50 80 104" aria-hidden="true">
-      <defs><clipPath id="owl-body"><path d={BODY} /></clipPath></defs>
-      <path d={BODY} />
-      {CONTOURS.map((s) => <path key={s} transform={`translate(0 ${fx(2 * (1 - s))}) scale(${s})`} d={BODY} />)}
-      <g clipPath="url(#owl-body)"><path d={SHADOW} className="shade" /><path d={BREAST} /></g>
-      <path d={WINGS} />
-      <path d="M-14 -33L-18 -44L-8 -36M14 -33L18 -44L8 -36M-12 -34L-15 -41M12 -34L15 -41" />
-      <path d={DISC} />
-      <circle cx="-8" cy="-22" r="7" /><circle cx="-8" cy="-22" r="4.4" /><circle cx="-8" cy="-22" r="1.2" />
-      <circle cx="8" cy="-22" r="7" /><circle cx="8" cy="-22" r="4.4" /><circle cx="8" cy="-22" r="1.2" />
-      <path d="M-2 -14L0 -9L2 -14" />
-      <path d="M-34 44H34M-34 46H34M-7 38v6M-3 39v5M3 39v5M7 38v6" />
-    </svg>
-  )
-}
-
-export function OwlMark() {
+/** The Ergane mark: the kit's simplest part, a two-hole strip, tilted, with an amber pip at its centre. */
+export function Mark() {
   return (
     <svg width="26" height="26" viewBox="0 0 26 26" fill="none" stroke="currentColor" strokeWidth="1.3" aria-hidden="true">
-      <path d="M5 7l3 3M21 7l-3 3" /><ellipse cx="13" cy="15" rx="8" ry="9" />
-      <circle cx="9.5" cy="13" r="2.6" /><circle cx="16.5" cy="13" r="2.6" />
-      <circle cx="9.5" cy="13" r=".9" fill="var(--amber)" stroke="none" /><circle cx="16.5" cy="13" r=".9" fill="var(--amber)" stroke="none" />
-      <path d="M12 17l1 1.6 1-1.6" />
+      <g transform="rotate(-45 13 13)">
+        <rect x="1.5" y="8" width="23" height="10" rx="5" />
+        <circle cx="6.5" cy="13" r="2.3" /><circle cx="19.5" cy="13" r="2.3" />
+        <circle cx="13" cy="13" r="1.1" fill="var(--amber)" stroke="none" />
+      </g>
     </svg>
   )
 }
