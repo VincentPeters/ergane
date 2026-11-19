@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  ANGLES, MATERIALS, PROFILES, bbox, clampPart, couponKerfs, generate, measure, validate,
+  ANGLES, MATERIALS, PRESS_FIT, PROFILES, bbox, clampPart, couponKerfs, generate, measure, validate,
   type Ctx, type GridPart, type Material, type Part, type Path,
 } from './geometry'
 import { inside, type Pt } from './shapes'
@@ -191,6 +191,18 @@ describe('joints', () => {
   it('keeps face holes a full margin clear of the finger notches', () => {
     const m = measure({ type: 'box', cols: 5, rows: 4, height: 3, lid: 'closed' }, ctx())
     expect(m.edgeWeb).toBeCloseTo(4 - 1.6, 6)
+  })
+
+  it('cuts a captive nut joint: two plates, press-fit tab slots, valid webs', () => {
+    const part: Part = { type: 'nutjoint', cols: 5, rows: 2, bolt: 12 }
+    const paths = generate(part, ctx())
+    expect(paths.filter((p) => p.op === 'outer')).toHaveLength(2)
+    const slots = paths.filter((p) => p.op === 'inner' && p.shape.kind === 'poly')
+    expect(slots).toHaveLength(2)
+    // Cut path = slot width (thickness minus press fit) minus the kerf it is shrunk by.
+    expect(bbox([slots[0]]).h).toBeCloseTo(acrylic.thickness - PRESS_FIT - acrylic.kerf, 6)
+    expect(validate(part, ctx())).toEqual([])
+    expect(clampPart({ ...part, cols: 6 })).toMatchObject({ cols: 7 }) // odd, so the bolt hole sits on the grid
   })
 
   it('lays out spacers with one hole each and no label between them', () => {

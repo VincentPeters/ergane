@@ -46,6 +46,9 @@ const SHAPES: Record<ShapeKind, { name: string; group: string; defaults: Record<
     { key: 'cols', label: 'Width', hint: 'holes' }, { key: 'rows', label: 'Depth', hint: 'holes' },
     { key: 'height', label: 'Height', hint: 'holes' },
     { key: 'lid', label: 'Lid', options: [['closed', 'Closed'], ['open', 'Open top']] }] },
+  nutjoint: { name: 'Captive nut joint', group: 'Joints', defaults: { cols: 5, rows: 2, bolt: 12 }, fields: [
+    { key: 'cols', label: 'Width', hint: 'holes, odd' }, { key: 'rows', label: 'Rows', hint: 'holes' },
+    { key: 'bolt', label: 'Bolt length', hint: 'mm' }] },
   spacer: { name: 'Spacers', group: 'Joints', defaults: { outer: 8, quantity: 6 }, fields: [
     { key: 'outer', label: 'Outer diameter', hint: 'mm', step: 0.5 }, { key: 'quantity', label: 'Quantity', hint: '1–48' }] },
 }
@@ -73,6 +76,7 @@ function describe(p: GridPart, holes: number, pitch: number): [string, string] {
     case 'bracket': return [`Corner bracket ${p.cols} × ${p.base} + ${p.height}`, `bracket-${p.cols}-${p.base}-${p.height}`]
     case 'box': return [`Box ${p.cols} × ${p.rows} × ${p.height}${p.lid === 'open' ? ', open top' : ''}`, `box-${p.cols}x${p.rows}x${p.height}-${p.lid}`]
     case 'spacer': return [`Spacers ø ${p.outer} mm × ${p.quantity}`, `spacers-${p.outer}x${p.quantity}`]
+    case 'nutjoint': return [`Captive nut joint, ${p.bolt} mm bolt`, `nutjoint-${p.cols}-${p.bolt}`]
   }
 }
 const MIXES: { id: HoleMix; name: string }[] = [
@@ -197,7 +201,7 @@ export default function Page() {
             </ul>
           </section>
         ))}
-        <p className="soon">Captive nut joints and mounting plates follow in the next milestones.</p>
+        <p className="soon">Mounting plates follow in the next milestone.</p>
       </nav>
 
       <main className="stage">
@@ -257,7 +261,7 @@ export default function Page() {
                 ...m!.types.map((t) => [`Hole ø ${HOLES[t].name}`, HOLES[t].d + FIT_OFFSET[fit], false] as const),
                 ['Edge web', m!.edgeWeb, issues.some((i) => i.rule === 'edge-web')],
                 ['Hole web', m!.holeWeb, issues.some((i) => i.rule === 'hole-web')],
-                ...(part.type === 'box' || part.type === 'bracket' ? [['Finger depth', base.thickness, false] as const] : []),
+                ...(part.type === 'box' || part.type === 'bracket' || part.type === 'nutjoint' ? [['Finger depth', base.thickness, false] as const] : []),
                 [`Min web, ${base.name}`, base.minWeb, false],
               ].map(([k, v, bad]) => (
                 <div key={k as string} className={bad ? 'bad' : ''}><dt>{k}</dt><dd>{mm(v as number)}<u>mm</u></dd></div>

@@ -57,6 +57,7 @@ export type Part =
   | { type: 'spacer'; outer: number; quantity: number; label?: boolean }
   | { type: 'bracket'; cols: number; base: number; height: number; label?: boolean }
   | { type: 'box'; cols: number; rows: number; height: number; lid: Lid; label?: boolean }
+  | { type: 'nutjoint'; cols: number; rows: number; bolt: number; label?: boolean }
   | { type: 'coupon' }
 export type Lid = 'closed' | 'open'
 export type GridPart = Exclude<Part, { type: 'coupon' }>
@@ -101,9 +102,19 @@ export function clampPart(part: Part): Part {
       ...part, cols: int(part.cols, 2, 30), rows: int(part.rows, 2, 30), height: int(part.height, 1, 30),
       lid: part.lid === 'open' ? 'open' : 'closed',
     }
+    case 'nutjoint': {
+      const cols = int(part.cols, 5, 31)
+      return { ...part, cols: cols % 2 ? cols : cols + 1, rows: int(part.rows, 1, 20), bolt: int(part.bolt, 10, 30) }
+    }
     case 'coupon': return part
   }
 }
+
+// Spec 7: tab slots are the material thickness minus a press fit.
+export const PRESS_FIT = 0.1
+// Nut across flats and thickness per bolt size; clearance added to each when cutting the pocket.
+const NUTS = { m3: { af: 5.5, t: 2.4 }, meccano: { af: 7.0, t: 3.2 } }
+const NUT_CLEAR = 0.2
 
 /** How a panel edge meets its neighbour: plain, fingers at both ends, or notches at both ends. */
 type EdgeKind = 'flat' | 'tabs' | 'slots'
@@ -306,6 +317,42 @@ function build(part: GridPart, ctx: Ctx, g: number): Geo {
         if (i % 2 === 1) { x = 0; y += rowH + GAP; rowH = 0 } else x += pn.w + GAP
       })
       return out
+    }
+    case 'nutjoint': {
+      // Plate A stands on plate B. A's bottom edge carries two alignment tabs and a T-slot that traps a nut;
+      // B carries the matching press-fit tab slots and the bolt hole. Bolt length sets how deep the T-slot runs.
+      const bolt = ctx.profile.hole === 'meccano' ? 'meccano' : 'm3'
+      const nut = NUTS[bolt]
+      const d = HOLES[bolt].d + FIT_OFFSET[ctx.fit]
+      const m = mMax, cols = part.cols, W = (cols - 1) * p + 2 * m, cx = W / 2
+      const slotLen = part.bolt - t + 1 // into A, with 1 mm spare past the bolt tip
+      const pocketTop = part.bolt - t - 0.7 // far face of the nut pocket, 0.7 mm short of the bolt tip
+      const pocketH = nut.t + NUT_CLEAR, pocketW = nut.af + NUT_CLEAR
+      const Hb = (part.rows - 1) * p + 2 * m + slotLen // holes stay a full margin above the slot end
+      const tw = 6, tabs = [cx - 2 * p, cx + 2 * p]
+      const fsA: Feature[] = []
+      for (let j = 0; j < part.rows; j++)
+        for (let i = 0; i < cols; i++) fsA.push(hole(m + i * p, m + j * p, i + j, i === 0 || j === 0 || i === cols - 1 || j === part.rows - 1))
+      const bodyA = union([rect(-g, -g, W + g, Hb + g), ...tabs.map((x) => rect(x - tw / 2 - g, Hb - OUT, x + tw / 2 + g, Hb + t + g))]).outer[0]
+      const outerA = difference(bodyA, [
+        rect(cx - d / 2 + g, Hb - slotLen + g, cx + d / 2 - g, Hb + t + OUT), // bolt slot, open at the edge
+        rect(cx - pocketW / 2 + g, Hb - pocketTop + g, cx + pocketW / 2 - g, Hb - pocketTop + pocketH - g), // nut pocket
+      ])[0]
+      // Plate B: three rows; the middle row holds the bolt hole and the two tab slots instead of grid holes.
+      const yB = Hb + t + GAP, yc = yB + m + p
+      const fsB: Feature[] = []
+      for (let j = 0; j < 3; j++)
+        for (let i = 0; i < cols; i++) {
+          const x = m + i * p
+          if (j === 1 && tabs.some((tx) => Math.abs(x - tx) < p - 0.01)) continue
+          fsB.push(j === 1 && Math.abs(x - cx) < 0.01 ? { a: [x, yc], b: [x, yc], type: bolt } : hole(x, yB + m + j * p, i + j, true))
+        }
+      const sw = tw + NUT_CLEAR, sh = t - PRESS_FIT
+      const slotsB = tabs.map((x) => rect(x - sw / 2 + g, yc - sh / 2 + g, x + sw / 2 - g, yc + sh / 2 - g))
+      return {
+        features: [...fsA, ...fsB], outer: [outerA, rect(-g, yB - g, W + g, yB + 2 * p + 2 * m + g)], inner: slotsB,
+        corner: 0, label: `N${part.bolt}`,
+      }
     }
     case 'curved': {
       // Holes on the centre arc one pitch apart as a straight line (chord), so they bolt to straight parts.
