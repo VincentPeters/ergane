@@ -49,7 +49,7 @@
   },
   {
     "id": "battery-holder", "name": "18650 or AA holder", "short": "BAT", "fastener": "M3", "verify": true, "parametric": true,
-    "rect": { "w": 60, "h": 0, "d": 3.2 }
+    "rect": { "w": 55, "h": 0, "d": 3.2 }
   },
   {
     "id": "generic-rect", "name": "Generic rectangle", "short": "RECT", "fastener": "your choice", "parametric": true,
