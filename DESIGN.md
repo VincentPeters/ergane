@@ -249,7 +249,7 @@ The bottom row of the shell; the bar is always visible, the body opens below it.
 - **Bar:** 48px; a ghost Kit toggle with a drawn chevron, the kit name in Public Sans 600, a body-small meta line (lines, pieces, sheets, sheet size), a Fault Red count of blocked lines, a right-aligned status notice, and the chalk Export kit button.
 - **Body:** 300px, three scrolling columns: the parts table, sheet thumbnails, and kit actions with the Material and Machine editors as hairline-topped fieldsets with Spectral italic legends.
 - **Parts table:** body-small rows on hairlines, Mute part IDs (P01 …), a 56px quantity field, Edit and Remove links; a blocked line turns Fault Red and carries its rule messages as a tooltip.
-- **Sheet thumbnails:** 240px Plate Field tiles at the sheet's aspect ratio, every path in chalk hairlines, captioned "Sheet 01" in Mute.
+- **Sheet thumbnails:** 240px Plate Field tiles at the sheet's aspect ratio, every path in chalk hairlines, captioned "Sheet 01 · 68 % used" in Mute, the figure in Chalk Dim tabular numerals.
 
 ### Custom grid fields
 - When the CUSTOM grid is chosen, a "Custom grid" section with pitch, hole ø and strip width fields leads the parameter column.

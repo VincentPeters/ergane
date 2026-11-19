@@ -27,7 +27,7 @@ export function KitDrawer(p: Props) {
   const { kit, setKit, ctx, machine } = p
   const key = JSON.stringify([kit.items, kit.sheet, ctx, machine.refSquare])
   // Rules and layout for the whole kit, recomputed only when the kit or the cutting settings change.
-  const check = useMemo(() => checkKit(kit, ctx), [key]) // eslint-disable-line react-hooks/exhaustive-deps
+  const check = useMemo(() => checkKit(kit, ctx, machine.refSquare), [key]) // eslint-disable-line react-hooks/exhaustive-deps
   const sheets = check.layout.sheets
   const pieces = kit.items.reduce((s, it) => s + it.qty, 0)
   const badLines = new Set([...check.failed.map((f) => f.line), ...check.layout.tooBigLines])
@@ -111,7 +111,7 @@ export function KitDrawer(p: Props) {
                 {/* Built by toSVG from numbers only, so injecting it is safe. */}
                 <div className="sheet" style={{ aspectRatio: `${kit.sheet.w} / ${kit.sheet.h}` }}
                   dangerouslySetInnerHTML={{ __html: toSVG(paths, { sheet: kit.sheet }) }} />
-                <figcaption>Sheet {String(i + 1).padStart(2, '0')}</figcaption>
+                <figcaption>Sheet {String(i + 1).padStart(2, '0')} · <span className="num-strong">{Math.round(check.layout.usage[i] * 100)}</span> % used</figcaption>
               </figure>
             ))}
           </div>

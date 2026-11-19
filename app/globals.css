@@ -273,3 +273,4 @@ input.text {
 .labels.five { grid-template-columns: repeat(5, 1fr); }
 .link.inline { font-size: 12px; padding: 0; }
 input.num::placeholder { color: var(--mute); }
+.sheets figcaption .num-strong { color: var(--chalk-dim); font-variant-numeric: tabular-nums; }

@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { toDXF } from './dxf'
-import { DEFAULT_MACHINE, exportKit, exportPart, kitCtx, layoutKit, partsCSV, sanitizeMachine } from './export'
+import { DEFAULT_MACHINE, checkKit, exportKit, exportPart, kitCtx, layoutKit, partsCSV, sanitizeMachine } from './export'
 import { MATERIALS, PROFILES, bbox, generate, sanitizeMaterial, sanitizeProfile, validate, type Ctx } from './geometry'
 import { decodeKit, emptyKit, encodeKit, kitToJSON, parseKit, starterKit } from './kit'
-import { pack } from './layout'
+import { nest, splitPieces } from './nest'
 import { toPDF } from './pdf'
 import { toSVG } from './svg'
 import { zip } from './zip'
@@ -75,7 +75,8 @@ describe('sheet layout', () => {
     const kit = starterKit()
     const lay = layoutKit(kit, kitCtx(kit, 0.2), false)
     expect(lay.tooBig).toEqual([])
-    expect(lay.placed).toHaveLength(kit.items.reduce((s, it) => s + it.qty, 0))
+    const pieces = kit.items.reduce((s, it) => s + it.qty * splitPieces(generate(it.part, kitCtx(kit, 0.2))).length, 0)
+    expect(lay.placed).toHaveLength(pieces)
     for (const sheet of lay.sheets) {
       const b = bbox(sheet)
       expect(b.x).toBeGreaterThanOrEqual(0)
@@ -84,23 +85,27 @@ describe('sheet layout', () => {
     }
   })
 
-  it('never overlaps two pieces', () => {
-    const pieces = Array.from({ length: 30 }, (_, i) => generate({ type: 'strip', holes: 3 + (i % 9), rows: 1 }, ctx))
-    const { sheets } = pack(pieces, { w: 300, h: 200, spacing: 2 })
-    for (const sheet of sheets) {
-      const boxes = sheet.filter((p) => p.op === 'outer').map((p) => bbox([p]))
-      for (let i = 0; i < boxes.length; i++)
-        for (let j = i + 1; j < boxes.length; j++) {
-          const a = boxes[i], b = boxes[j]
-          const apart = a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y
-          expect(apart).toBe(true)
-        }
-    }
+  it('shows in the drawer exactly the layout it exports', () => {
+    const kit = starterKit(), c = kitCtx(kit, 0.2)
+    const preview = checkKit(kit, c).layout.sheets
+    const exported = layoutKit(kit, c, false).sheets
+    expect(JSON.stringify(exported)).toBe(JSON.stringify(preview))
+  })
+
+  it('puts a window that holds parts in the outer-cut file when files are split per operation', () => {
+    const kit = { ...emptyKit(), sheet: { w: 90, h: 70, spacing: 2 }, items: [
+      { part: { type: 'frame', cols: 9, rows: 7, border: 1 } as const, qty: 1 },
+      { part: { type: 'strip', holes: 4, rows: 1 } as const, qty: 3 },
+    ] }
+    const { files } = exportKit(kit, kitCtx(kit, 0.2), 'svg', { ...DEFAULT_MACHINE, split: 'per-op' }, kitToJSON(kit))
+    const count = (name: string) => (files.find((f) => f.name.includes(name))!.data.match(/<path /g) ?? []).length
+    expect(count('cut-outer')).toBe(1 + 3 + 1) // frame outline, three strips, and the frame's window
+    expect(count('cut-inner')).toBe(0) // the frame and strips have only round holes, written as circles
   })
 
   it('reports parts larger than the sheet (rule 3)', () => {
     const big = { type: 'plate', cols: 40, rows: 30, pattern: 'full', radius: 2 } as const
-    expect(pack([generate(big, ctx)], { w: 300, h: 200, spacing: 2 }).tooBig).toEqual([0])
+    expect(nest([generate(big, ctx)], { w: 300, h: 200, spacing: 2 }).tooBig).toEqual([0])
     expect(validate(big, { ...ctx, sheet: { w: 300, h: 200, spacing: 2 } }).map((i) => i.rule)).toContain('sheet-fit')
     expect(validate({ type: 'strip', holes: 11, rows: 1 }, { ...ctx, sheet: { w: 300, h: 200, spacing: 2 } })).toEqual([])
   })

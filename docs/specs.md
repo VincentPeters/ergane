@@ -28,7 +28,7 @@ Out of scope for v1:
 
 - 3D printed parts.
 - Machine control or G-code.
-- Automatic dense nesting. V1 uses row packing.
+- Exact no-fit-polygon nesting. V1 nests by true shape on a raster (section 8).
 - User accounts and cloud storage.
 
 ## 3. Grid profiles
@@ -193,7 +193,7 @@ Layer and colour convention, configurable per machine profile:
 | Inner cuts (holes, slots) | Green #00FF00 | 2 |
 | Outer cuts | Red #FF0000 | 3 |
 
-Inner cuts run before outer cuts so parts stay in place during hole cutting.
+Inner cuts run before outer cuts so parts stay in place during hole cutting. One exception: a cutout that holds other parts (a frame window with strips nested in it) moves to the outer cuts, after the parts inside it and before its own part's outline, so its slug is not freed early.
 
 Machine-neutral export. The app targets no specific laser:
 
@@ -201,14 +201,14 @@ Machine-neutral export. The app targets no specific laser:
 - SVG groups and DXF layers carry plain names: engrave, cut-inner, cut-outer. Software without colour mapping reads the layer names.
 - Option: one file per operation, for software with no layer or colour support.
 - Option: a single-colour file with all paths, for machines where the operator sets the order by hand.
-- All files use mm units and real-world scale, with a 10 mm reference square on request to check import scale.
+- All files use mm units and real-world scale, with a 10 mm reference square on request to check import scale. On kit sheets it takes the top-left corner of every sheet.
 
 Sheet layout:
 
 - User sets sheet size. Presets: 300 x 200, 600 x 300, 600 x 400, 900 x 600 mm.
 - Part spacing default 2 mm.
-- Row packing in v1. Parts sort by height.
-- The app splits a kit over several sheets and numbers each file.
+- True-shape nesting on a 0.5 mm raster (coarser on sheets above 1200 mm). Pieces turn in 90° steps, interlock where their shapes allow, and small parts nest inside large cutouts such as frame windows. Three piece orders (by area, long side and box area) always run and the result with fewest sheets, then least height, wins, so the preview and the export always show the same layout. Each sheet shows how much of it is part.
+- The app splits a kit over several sheets and numbers each file. Pieces of one part (box faces, wheel and pulley discs) nest separately and may land on different sheets.
 - Export also produces a parts list in CSV: part ID, type, parameters, quantity.
 
 ## 9. Kits
@@ -328,11 +328,11 @@ Component library entry:
 - **Wheels and pulleys** are stacks of discs (flange, core, flange), since a sheet cannot hold an edge groove. A GT2 pulley uses as many cores as fill the 6 mm belt. Turning parts take a bolt hole or a Technic axle cross, plus four grid holes one pitch out when large enough.
 - **Gear flanks** grow by g/R along the circle instead of along their true normal; the difference is under 7 % of half the kerf.
 - **Edge margin** (section 6) is an optional per-part override; unset, it is half the strip width. **Corner radius** is a parameter on plates; strips and arms have fully round ends, and frames, mounting and adapter plates use the edge margin as their radius.
-- **Sheet layout** packs each piece whole (a box's faces stay together) and does not rotate pieces.
+- **Sheet layout** nests by true shape on a raster rather than exact no-fit polygons: gaps can be up to one cell (0.5 mm) wider than the spacing, never narrower. Rotation ignores wood grain; a per-material rotation setting is a possible follow-up for plywood.
 - **Kits from files and links** are untrusted: fields are allowlisted per part type, everything is clamped, links stop inflating at 1 MB, and a kit over 1000 pieces or 100 000 cut paths is refused.
 
 ## 17. Acceptance status (v0.3)
 
-Automated (Vitest): the 11-hole strip measures 88 × 8 mm nominal and 88.2 × 8.2 mm as cut; webs, edge webs and sheet fit are tested for every part type; every validation rule has a test; the starter kit exports in well under 2 seconds; DXF, PDF and ZIP structure, share links and kit round trips are tested.
+Automated (Vitest): the 11-hole strip measures 88 × 8 mm nominal and 88.2 × 8.2 mm as cut; nesting keeps the full spacing between true outlines and to the sheet edge, interlocks gussets, turns a part a quarter turn to fit, nests parts inside a frame window and cuts that window after them, and shows the same layout in preview and export; webs, edge webs and sheet fit are tested for every part type; every validation rule has a test; the starter kit exports in well under 2 seconds; DXF, PDF and ZIP structure, share links and kit round trips are tested.
 
 Needs a laser and calipers, not yet done: bolt and axle fit on cut parts, hole-for-hole alignment with a Technic beam and a Meccano strip, the values in 3.3, the Technic strip width question in 15.1, and opening the SVG in LightBurn, Inkscape and Illustrator.

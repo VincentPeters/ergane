@@ -1,10 +1,11 @@
 // Turns parts and kits into the files a laser operator downloads, per machine profile (spec 8).
 import { toDXF } from './dxf'
 import {
-  MATERIALS, PROFILES, generate, validate, type Ctx, type GridPart, type Issue, type Path,
+  bbox, generate, validate, type Ctx, type GridPart, type Issue, type Path,
 } from './geometry'
 import type { Kit } from './kit'
-import { pack, referenceSquare } from './layout'
+import { referenceSquare } from './layout'
+import { nest, splitPieces } from './nest'
 import { toPDF } from './pdf'
 import { DEFAULT_COLORS, toSVG, type Colors, type ExportOpts } from './svg'
 
@@ -61,9 +62,8 @@ function render(base: string, pages: { paths: Path[]; sheet?: { w: number; h: nu
 export function exportPart(name: string, paths: Path[], format: Format, machine: Machine): OutFile[] {
   let all = paths
   if (machine.refSquare) {
-    const xs = paths.flatMap((p) => (p.shape.kind === 'circle' ? [p.shape.cx - p.shape.r] : p.shape.pts.map(([x]) => x)))
-    const ys = paths.flatMap((p) => (p.shape.kind === 'circle' ? [p.shape.cy - p.shape.r] : p.shape.pts.map(([, y]) => y)))
-    all = [...paths, referenceSquare(Math.min(...xs) - 14, Math.min(...ys))]
+    const b = bbox(paths)
+    all = [...paths, referenceSquare(b.x - 14, b.y)]
   }
   return render(name, [{ paths: all }], format, machine)
 }
@@ -75,19 +75,20 @@ export function kitCtx(kit: Kit, kerf: number): Ctx {
 
 export type KitCheck = { line: number; issues: Issue[] }[]
 /** Rule failures per kit line, plus parts too big for the sheet (spec 6, rule 3). */
-export function checkKit(kit: Kit, ctx: Ctx): { failed: KitCheck; layout: ReturnType<typeof layoutKit> } {
+export function checkKit(kit: Kit, ctx: Ctx, refSquare = false): { failed: KitCheck; layout: ReturnType<typeof layoutKit> } {
   const failed = kit.items.map((it, line) => ({ line, issues: validate(it.part, ctx) })).filter((f) => f.issues.length)
-  return { failed, layout: layoutKit(kit, ctx, false) }
+  return { failed, layout: layoutKit(kit, ctx, refSquare) }
 }
 
 /** Generates every piece of the kit (each quantity a separate piece) and packs them onto sheets. */
 export function layoutKit(kit: Kit, ctx: Ctx, refSquare: boolean) {
   const pieces: Path[][] = [], lineOf: number[] = []
   kit.items.forEach((it, line) => {
-    const paths = generate(it.part, ctx)
-    for (let k = 0; k < it.qty; k++) { pieces.push(paths); lineOf.push(line) }
+    // Multi-piece parts (box faces, wheel discs) split up, so each piece nests on its own.
+    const split = splitPieces(generate(it.part, ctx))
+    for (let k = 0; k < it.qty; k++) for (const p of split) { pieces.push(p); lineOf.push(line) }
   })
-  const packed = pack(pieces, kit.sheet, refSquare ? { w: 10, h: 10 } : undefined)
+  const packed = nest(pieces, kit.sheet, { refSquare })
   return { ...packed, tooBigLines: [...new Set(packed.tooBig.map((i) => lineOf[i]))] }
 }
 
@@ -109,7 +110,7 @@ export function partsCSV(kit: Kit): string {
 
 /** Every file of a kit export: sheets in the chosen format, the parts list and the kit itself. */
 export function exportKit(kit: Kit, ctx: Ctx, format: Format, machine: Machine, kitJSON: string): { files: OutFile[]; sheets: number } {
-  const lay = layoutKit(kit, ctx, machine.refSquare)
+  const lay = layoutKit(kit, ctx, machine.refSquare) // the same call as the preview, so both show one layout
   const base = kit.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'kit'
   const pages = lay.sheets.map((paths) => ({ paths, sheet: { w: kit.sheet.w, h: kit.sheet.h } }))
   return {

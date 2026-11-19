@@ -39,8 +39,7 @@ export function roundedConvex(centres: Pt[], r: number): Pt[] {
   })
   if (c.length <= 1) return circle(c[0] ?? centres[0], r)
   if (c.length === 2) return stadium(c[0], c[1], r)
-  const area = c.reduce((s, p, i) => { const q = c[(i + 1) % c.length]; return s + p[0] * q[1] - q[0] * p[1] }, 0)
-  const pts = area < 0 ? [...c].reverse() : c
+  const pts = polygonArea(c) < 0 ? [...c].reverse() : c
   const n = pts.length
   const out: Pt[] = []
   for (let i = 0; i < n; i++) {
@@ -125,3 +124,7 @@ export function closestSegSeg(a: Pt, b: Pt, c: Pt, d: Pt): [Pt, Pt, number] {
   }
   return best
 }
+
+/** Signed area of a ring (shoelace); positive when the points turn counter-clockwise in maths axes. */
+export const polygonArea = (pts: Pt[]) =>
+  pts.reduce((s, [x, y], i) => { const [u, v] = pts[(i + 1) % pts.length]; return s + x * v - u * y }, 0) / 2
