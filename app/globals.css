@@ -36,17 +36,17 @@ h1, h2 { margin: 0; }
 /* Shell */
 .app {
   display: grid;
-  grid-template: 56px 1fr / 228px minmax(0, 1fr) 304px;
-  grid-template-areas: "top top top" "lib stage form";
+  grid-template: 56px minmax(0, 1fr) auto / 228px minmax(0, 1fr) 304px;
+  grid-template-areas: "top top top" "lib stage form" "drawer drawer drawer";
   height: 100dvh;
 }
 .top {
   grid-area: top;
-  display: flex; align-items: center; gap: 16px;
+  display: flex; align-items: center; gap: 12px;
   padding: 0 16px;
   border-bottom: 1px solid var(--line);
 }
-.brand { display: flex; align-items: center; gap: 10px; width: 196px; font-weight: 600; font-size: 16px; color: var(--chalk); }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 16px; color: var(--chalk); }
 .brand small { font: 300 italic 14px var(--font-serif), serif; color: var(--mute); }
 .sp { flex: 1; }
 
@@ -189,7 +189,7 @@ dl div.bad dt, dl div.bad dd { color: var(--err); }
 
 /* Narrow screens: one column, chart first after the controls. */
 @media (max-width: 960px) {
-  .app { grid-template: auto auto minmax(420px, 70dvh) auto / 1fr; grid-template-areas: "top" "lib" "stage" "form"; height: auto; }
+  .app { grid-template: auto auto minmax(420px, 70dvh) auto auto / 1fr; grid-template-areas: "top" "lib" "stage" "form" "drawer"; height: auto; }
   .top { flex-wrap: wrap; padding: 10px 16px; gap: 10px 14px; }
   .brand { width: 100%; }
   .sp { display: none; }
@@ -202,7 +202,71 @@ dl div.bad dt, dl div.bad dd { color: var(--err); }
   .stage { padding: 12px 16px; }
   .form { border-left: 0; border-top: 1px solid var(--line); }
 }
+
+/* Export group: format and the button read as one control. */
+.export { display: flex; gap: 6px; }
+.export select { width: 80px; }
+
+/* Secondary buttons and plain text fields share the field look. */
+.ghost {
+  height: 32px; padding: 0 12px; border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--navy-2); color: var(--chalk-dim); font-size: 13px;
+  display: inline-flex; align-items: center; gap: 8px; position: relative;
+}
+.ghost:hover:not(:disabled) { border-color: var(--grid); color: var(--chalk); }
+.ghost:disabled { opacity: 0.5; cursor: not-allowed; }
+.ghost svg { fill: none; stroke: currentColor; stroke-width: 1.5; }
+.ghost.wide { width: 100%; justify-content: center; margin-top: 12px; }
+.ghost.file { cursor: pointer; }
+.ghost.file input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.ghost.file:focus-within { outline: 2px solid var(--amber); outline-offset: 2px; }
+input.text {
+  font: inherit; font-size: 14px; color: var(--chalk); background: var(--navy-2);
+  border: 1px solid var(--line); border-radius: var(--radius); height: 32px; padding: 0 10px; width: 170px;
+}
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+
+/* Kit drawer: the bar is always there; the body opens over a fixed height and scrolls inside. */
+.drawer { grid-area: drawer; border-top: 1px solid var(--line); background: var(--navy); }
+.drawer-bar { display: flex; align-items: center; gap: 14px; padding: 8px 16px; min-height: 48px; flex-wrap: wrap; }
+.drawer-bar b { font-weight: 600; }
+.drawer-bar .err { color: var(--err); font-size: 13px; }
+.drawer-bar .notice { flex: 1; min-width: 120px; color: var(--text-2); font-size: 13px; text-align: right; }
+.drawer-body { display: grid; grid-template-columns: minmax(280px, 1fr) minmax(0, 1.4fr) 300px; gap: 16px; padding: 0 16px 16px; height: 300px; }
+.drawer-body > * { min-height: 0; overflow: auto; }
+.kit-list table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.kit-list th { text-align: left; font-weight: 400; color: var(--mute); padding: 4px 6px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--navy); }
+.kit-list td { padding: 4px 6px; border-bottom: 1px solid var(--line); color: var(--chalk-dim); }
+.kit-list td:first-child { color: var(--mute); }
+.kit-list input.num { width: 56px; height: 28px; }
+.kit-list .acts { white-space: nowrap; text-align: right; }
+.kit-list .acts .link { font-size: 13px; padding: 2px 4px; }
+.kit-list tr.bad td { color: var(--err); }
+.sheets { display: flex; gap: 12px; align-items: flex-start; }
+.sheets figure { margin: 0; flex: 0 0 auto; width: 240px; }
+.sheets .sheet { width: 100%; border: 1px solid var(--line); border-radius: var(--radius); background: var(--field); }
+.sheets .sheet svg { width: 100%; height: 100%; display: block; }
+.sheets .sheet svg g { stroke: var(--chalk); }
+.sheets .sheet svg * { stroke-width: 0.6px; vector-effect: non-scaling-stroke; }
+.sheets figcaption { font-size: 12px; color: var(--mute); margin-top: 4px; }
+.kit-actions { display: flex; flex-direction: column; gap: 6px; }
+.kit-actions small { color: var(--mute); font-size: 12px; margin-left: 4px; }
+.btns { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+.row.saved { gap: 6px; justify-content: flex-start; }
+.row.saved select { flex: 1; }
+.machine { border: 0; border-top: 1px solid var(--line); margin: 8px 0 0; padding: 8px 0 0; }
+.machine legend { font-size: 17px; color: var(--text-2); padding: 0 6px 0 0; }
+.row.colors { justify-content: flex-start; gap: 14px; font-size: 13px; }
+.row.colors label { display: flex; align-items: center; gap: 6px; }
+.row.colors input { width: 32px; height: 24px; padding: 0; border: 1px solid var(--line); border-radius: var(--radius); background: none; }
+@media (max-width: 960px) {
+  .drawer-body { grid-template-columns: 1fr; height: auto; }
+  .drawer-bar .notice { text-align: left; flex-basis: 100%; }
+}
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 .link.file { position: relative; display: inline-block; align-self: flex-start; cursor: pointer; }
 .link.file input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 .link.file:focus-within { outline: 2px solid var(--amber); outline-offset: 2px; border-radius: var(--radius); }
+.top select { max-width: 170px; }
+.top .brand small { white-space: nowrap; }
+@media (max-width: 1360px) { .top .brand small { display: none; } }

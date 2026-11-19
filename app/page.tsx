@@ -1,12 +1,19 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { COMPONENTS, parseComponents, sanitizeComponent, type ComponentDef } from '../src/core/components'
+import { COMPONENTS, parseComponents, type ComponentDef } from '../src/core/components'
+import { DEFAULT_MACHINE, exportPart, type Format, type Machine, type OutFile } from '../src/core/export'
+import { decodeKit, emptyKit, type Kit } from '../src/core/kit'
+import { zip } from '../src/core/zip'
+import { DecimalInput, Num } from './inputs'
+import { KitDrawer } from './KitDrawer'
+import {
+  download, kerfKey, loadComponents, loadKerfs, loadKit, loadKits, loadMachines, saveComponents, saveKerfs, saveKit, saveKits, saveMachines,
+} from './storage'
 import {
   ANGLES, FIT_OFFSET, HOLES, MATERIALS, PROFILES, RULE_COUNT, bbox, clampPart, couponKerfs, defaultMix, generate, measure, minWebFor, validate,
   type Ctx, type Fit, type GridPart, type HoleMix, type Part,
 } from '../src/core/geometry'
-import { toSVG } from '../src/core/svg'
 import { Chart, OwlMark, type Fault } from './Chart'
 
 type Kind = Part['type']
@@ -89,16 +96,14 @@ function describe(p: GridPart, holes: number, pitch: number): [string, string] {
   }
 }
 
-// Imported components live in this browser, re-checked on every load.
-const COMPONENTS_KEY = 'cutgrid.components.v1'
-function loadComponents(): ComponentDef[] {
-  try {
-    const raw = JSON.parse(localStorage.getItem(COMPONENTS_KEY) ?? '[]')
-    return Array.isArray(raw) ? raw.flatMap((c) => { const s = sanitizeComponent(c); return typeof s === 'string' ? [] : [s] }) : []
-  } catch { return [] }
-}
-function saveComponents(list: ComponentDef[]) {
-  try { localStorage.setItem(COMPONENTS_KEY, JSON.stringify(list)) } catch { /* kept for this visit only */ }
+// The editor's form values for a part, so a kit line can be opened for editing.
+function partToParams(part: GridPart): [ShapeKind, Record<string, Value>] {
+  if (part.type === 'mount') {
+    const r = part.component.rect
+    return ['mount', { component: part.component.id, border: part.border, w: r?.w ?? '', h: r?.h ?? '', d: r?.d ?? '' }]
+  }
+  const { type, label: _label, ...rest } = part as GridPart & { label?: boolean }
+  return [type as ShapeKind, rest as Record<string, Value>]
 }
 
 // A parametric component takes the typed width, height and hole size over its defaults.
@@ -115,13 +120,13 @@ const MIXES: { id: HoleMix; name: string }[] = [
   { id: 'border-technic', name: 'Technic border, M3 inside' },
 ]
 
-// Calibrated kerf per material lives in this browser only. Reads and writes may throw in private modes.
-const KERF_KEY = 'cutgrid.kerf.v1'
-function loadKerfs(): Record<string, number> {
-  try { return JSON.parse(localStorage.getItem(KERF_KEY) ?? '{}') } catch { return {} }
-}
-function saveKerfs(k: Record<string, number>) {
-  try { localStorage.setItem(KERF_KEY, JSON.stringify(k)) } catch { /* not persisted, still works */ }
+const FORMATS: [Format, string][] = [['svg', 'SVG'], ['dxf', 'DXF'], ['pdf', 'PDF']]
+const MIME: Record<Format, string> = { svg: 'image/svg+xml', dxf: 'application/dxf', pdf: 'application/pdf' }
+
+/** One file downloads as itself; several (per-operation splits, a kit) arrive as one ZIP. */
+function deliver(base: string, files: OutFile[], format: Format) {
+  if (files.length === 1) download(files[0].name, files[0].data, files[0].name.endsWith('.csv') ? 'text/csv' : MIME[format])
+  else download(`${base}.zip`, zip(files), 'application/zip')
 }
 
 const mm = (v: number) => (Number.isFinite(v) ? v.toFixed(2) : '–')
@@ -143,7 +148,38 @@ export default function Page() {
 
   const [custom, setCustom] = useState<ComponentDef[]>([])
   const [importMsg, setImportMsg] = useState('')
-  useEffect(() => { setKerfs(loadKerfs()); setCustom(loadComponents()) }, [])
+  const [machines, setMachines] = useState<Machine[]>([DEFAULT_MACHINE])
+  const [machineId, setMachineId] = useState(DEFAULT_MACHINE.id)
+  const [format, setFormat] = useState<Format>('svg')
+  const [kit, setKitState] = useState<Kit>(() => emptyKit())
+  const [savedKits, setSavedKits] = useState<Kit[]>([])
+  const [drawer, setDrawer] = useState(false)
+  const [notice, setNotice] = useState('')
+
+  const setKit = (k: Kit) => { setKitState(k); saveKit(k) }
+  // The kit follows the settings in the top bar; loading a kit sets the top bar to the kit's settings.
+  const adoptKit = (k: Kit) => {
+    setProfileId(k.profile); setMix(k.holeMix); setMaterialId(k.material); setFit(k.fit)
+    setKit(k)
+  }
+  useEffect(() => {
+    setKerfs(loadKerfs()); setCustom(loadComponents()); setMachines(loadMachines()); setSavedKits(loadKits())
+    const stored = loadKit()
+    if (stored) adoptKit(stored)
+    // A share link carries the kit in the URL fragment, which never reaches a server.
+    if (location.hash.startsWith('#kit=')) {
+      decodeKit(location.hash.slice(5)).then((k) => {
+        if (typeof k === 'string') return setNotice(k)
+        adoptKit(k); setDrawer(true); setNotice(`Loaded “${k.name}” from the link.`)
+        history.replaceState(null, '', location.pathname)
+      })
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (kit.profile !== profileId || kit.holeMix !== mix || kit.material !== materialId || kit.fit !== fit)
+      setKit({ ...kit, profile: profileId, holeMix: mix, material: materialId, fit })
+  }, [profileId, mix, materialId, fit]) // eslint-disable-line react-hooks/exhaustive-deps
+  const machine = machines.find((x) => x.id === machineId) ?? DEFAULT_MACHINE
   const library = [...COMPONENTS, ...custom.filter((c) => !COMPONENTS.some((b) => b.id === c.id))]
   const importComponents = async (file: File) => {
     const parsed = parseComponents(await file.text())
@@ -156,11 +192,12 @@ export default function Page() {
 
   const profile = PROFILES.find((p) => p.id === profileId)!
   const base = MATERIALS.find((m) => m.id === materialId)!
-  const calibrated = materialId in kerfs
-  const kerf = kerfs[materialId] ?? base.kerf
+  const kk = kerfKey(machine.id, materialId)
+  const calibrated = kk in kerfs
+  const kerf = kerfs[kk] ?? base.kerf
   const setKerf = (v: number) => {
     if (!Number.isFinite(v) || v < 0 || v > 1) return
-    const next = { ...kerfs, [materialId]: v }
+    const next = { ...kerfs, [kk]: v }
     setKerfs(next)
     saveKerfs(next)
   }
@@ -169,11 +206,10 @@ export default function Page() {
     : kind === 'mount' ? clampPart({ type: 'mount', component: resolveComponent(library, params.mount), border: Number(params.mount.border), label })
     : clampPart({ type: kind, ...params[kind], label } as Part)
   const setParam = (key: string, v: Value) => kind !== 'coupon' && setParams({ ...params, [kind]: { ...params[kind], [key]: v } })
-  const ctx: Ctx = { profile, material: { ...base, kerf }, fit, holeMix: mix }
+  const ctx: Ctx = { profile, material: { ...base, kerf }, fit, holeMix: mix, sheet: kit.sheet }
 
   const key = JSON.stringify([part, ctx])
   const paths = useMemo(() => generate(part, ctx), [key])
-  const svg = useMemo(() => toSVG(paths), [paths])
   const issues = validate(part, ctx)
   const m = part.type === 'coupon' ? null : measure(part, ctx)
   // Failing webs are drawn on the plot where they occur, not only listed in the column.
@@ -188,10 +224,12 @@ export default function Page() {
   const [title, file] = part.type === 'coupon' ? ['Calibration coupon', `coupon-${materialId}`] : describe(part, holeCount, profile.pitch)
   const elongated = part.type === 'strip' || part.type === 'slotted'
 
-  const download = () => {
-    const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }))
-    Object.assign(document.createElement('a'), { href: url, download: `${file}.svg` }).click()
-    URL.revokeObjectURL(url)
+  const exportCurrent = () => deliver(file, exportPart(file, paths, format, machine), format)
+  const editLine = (part: GridPart) => {
+    const [k, v] = partToParams(part)
+    setParams({ ...params, [k]: { ...params[k], ...v } })
+    setLabel(part.label !== false)
+    setKind(k)
   }
 
   return (
@@ -221,10 +259,20 @@ export default function Page() {
             <option value="loose">Loose</option><option value="normal">Normal</option><option value="tight">Tight</option>
           </select>
         </label>
+        <label className="f">Machine
+          <select value={machine.id} onChange={(e) => { setMachineId(e.target.value); setBest(null) }}>
+            {machines.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+          </select>
+        </label>
         <span className="sp" />
         <button className="link" onClick={() => setKind('coupon')}>Calibrate</button>
-        <button className="primary" onClick={download} disabled={issues.length > 0}
-          title={issues.length ? 'Fix the failed rules first' : `Download ${file}.svg`}>Export SVG</button>
+        <div className="export">
+          <select aria-label="File format" value={format} onChange={(e) => setFormat(e.target.value as Format)}>
+            {FORMATS.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+          </select>
+          <button className="primary" onClick={exportCurrent} disabled={issues.length > 0}
+            title={issues.length ? 'Fix the failed rules first' : `Download ${file}.${format}`}>Export</button>
+        </div>
       </header>
 
       <nav className="library" aria-label="Element library">
@@ -340,9 +388,20 @@ export default function Page() {
                 <ul>{issues.map((i) => <li key={i.rule}>{i.message}</li>)}</ul>
               </div>
             )}
+            <button className="ghost wide" onClick={() => {
+              setKit({ ...kit, items: [...kit.items, { part: part as GridPart, qty: 1 }] })
+              setNotice(`Added ${title} to ${kit.name}.`)
+            }}>Add to kit</button>
           </>
         )}
       </aside>
+
+      <KitDrawer open={drawer} setOpen={setDrawer} kit={kit} setKit={setKit} adoptKit={adoptKit}
+        saved={savedKits} setSaved={(k) => { setSavedKits(k); saveKits(k) }}
+        ctx={ctx} format={format} machine={machine}
+        machines={machines} setMachines={(list) => { setMachines(list); saveMachines(list) }} selectMachine={setMachineId}
+        onEdit={editLine} deliver={deliver} notice={notice} setNotice={setNotice}
+        describe={(p) => describe(p, generate(p, ctx).filter((x) => x.shape.kind === 'circle').length, profile.pitch)[0]} />
     </div>
   )
 }
@@ -352,37 +411,6 @@ export default function Page() {
 function KerfInput({ value, onCommit }: { value: number; onCommit: (v: number) => void }) {
   return <DecimalInput value={value} onCommit={onCommit} format={(v) => v.toFixed(2)} valid={(v) => v >= 0 && v <= 1}
     aria-describedby="kerf-src" aria-label="Kerf in millimetres" />
-}
-
-// Numbers always read with a decimal point, whatever the browser locale ("3.2", never "3,2"); a number
-// input would follow the locale. Accepts either separator, commits valid values as they are typed,
-// and settles to the formatted value on blur.
-function DecimalInput({ value, onCommit, format = (v) => String(+v.toFixed(4)), valid = () => true, ...rest }: {
-  value: number; onCommit: (v: number) => void; format?: (v: number) => string; valid?: (v: number) => boolean
-} & Omit<React.InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange'>) {
-  const shown = Number.isFinite(value) ? format(value) : ''
-  const [draft, setDraft] = useState(shown)
-  const parse = (s: string) => Number(s.trim().replace(',', '.'))
-  // Follow outside changes (material switch, coupon result) without fighting a half-typed "0." draft.
-  useEffect(() => { if (parse(draft) !== value) setDraft(shown) }, [value]) // eslint-disable-line react-hooks/exhaustive-deps
-  return (
-    <input {...rest} type="text" inputMode="decimal" className="num" value={draft}
-      onChange={(e) => {
-        setDraft(e.target.value)
-        const v = parse(e.target.value)
-        if (e.target.value.trim() && Number.isFinite(v) && valid(v)) onCommit(v)
-      }}
-      onBlur={() => setDraft(shown)} />
-  )
-}
-
-function Num(props: { label: string; hint: string; value: number; step?: number; onChange: (v: number) => void }) {
-  return (
-    <label className="row">
-      <span>{props.label} <small>{props.hint}</small></span>
-      <DecimalInput value={props.value} onCommit={props.onChange} />
-    </label>
-  )
 }
 
 function Coupon(props: {

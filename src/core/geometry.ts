@@ -65,7 +65,7 @@ export type Part =
 export type Lid = 'closed' | 'open'
 export type GridPart = Exclude<Part, { type: 'coupon' }>
 
-export type Ctx = { profile: Profile; material: Material; fit: Fit; holeMix?: HoleMix }
+export type Ctx = { profile: Profile; material: Material; fit: Fit; holeMix?: HoleMix; sheet?: { w: number; h: number; spacing: number } }
 
 // Part parameters arrive from forms, files and URLs; clamp them here so no caller can build a broken part.
 const int = (v: unknown, lo: number, hi: number) => {
@@ -522,8 +522,8 @@ function coupon(ctx: Ctx): Path[] {
   return paths
 }
 
-export type Issue = { rule: 'hole-web' | 'edge-web'; message: string }
-export const RULE_COUNT = 2
+export type Issue = { rule: 'hole-web' | 'edge-web' | 'sheet-fit'; message: string }
+export const RULE_COUNT = 3
 
 /** A web as a line across the material, from one cut edge to the other, in nominal part coordinates. */
 export type Span = [number, number, number, number]
@@ -619,6 +619,15 @@ export function validate(part: Part, ctx: Ctx): Issue[] {
         q.type === 'frame' && 'widen the border',
       ])}.`,
     })
+  // Spec 6, rule 3: the part as cut, plus the spacing on every side, fits the chosen sheet.
+  if (ctx.sheet) {
+    const k = ctx.material.kerf, { w, h } = measure(q, ctx), s = ctx.sheet
+    if (w + k + 2 * s.spacing > s.w || h + k + 2 * s.spacing > s.h)
+      issues.push({
+        rule: 'sheet-fit',
+        message: `This part is ${(w + k).toFixed(1)} × ${(h + k).toFixed(1)} mm, larger than the ${s.w} × ${s.h} mm sheet with ${s.spacing} mm spacing. To fix: choose a larger sheet or make the part smaller.`,
+      })
+  }
   return issues
 }
 
