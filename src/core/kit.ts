@@ -84,7 +84,7 @@ export function parseKit(json: string): Kit | string {
   let pieces = 0, paths = 0
   for (const p of raw.parts as Record<string, unknown>[]) {
     if (!p || typeof p !== 'object' || typeof p.type !== 'string' || !PART_TYPES.includes(p.type)) continue
-    const fields = Object.fromEntries(PART_KEYS[p.type].filter((k) => k in p).map((k) => [k, p[k]]))
+    const fields = Object.fromEntries([...PART_KEYS[p.type], 'margin'].filter((k) => k in p).map((k) => [k, p[k]]))
     const part = clampPart({ type: p.type, ...fields, label: p.label === true } as Part) as GridPart
     const qty = Math.round(num(p.qty, 1, 500, 1))
     pieces += qty

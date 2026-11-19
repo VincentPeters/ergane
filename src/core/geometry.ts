@@ -107,7 +107,7 @@ export type Part =
 /** The centre of a turning part: a round hole for a bolt, or a Technic axle cross. */
 export type Bore = 'hole' | 'axle'
 export type Lid = 'closed' | 'open'
-export type GridPart = Exclude<Part, { type: 'coupon' }>
+export type GridPart = Exclude<Part, { type: 'coupon' }> & { margin?: number }
 
 export type Ctx = {
   profile: Profile; material: Material; fit: Fit; holeMix?: HoleMix
@@ -125,7 +125,14 @@ const num = (v: unknown, lo: number, hi: number) => {
   return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : lo
 }
 const bore = (v: unknown): Bore => (v === 'axle' ? 'axle' : 'hole')
+/** Spec 6 edge margin: distance from an outer hole centre to the edge. Unset means half the strip width. */
 export function clampPart(part: Part): Part {
+  const out = clampFields(part)
+  const margin = (part as { margin?: unknown }).margin
+  if (part.type === 'coupon' || margin === undefined || margin === null || margin === '') return out
+  return Object.assign({}, out, { margin: num(margin, 2, 20) })
+}
+function clampFields(part: Part): Part {
   switch (part.type) {
     case 'strip': return { ...part, holes: int(part.holes, 2, 50), rows: int(part.rows, 1, 3) }
     case 'slotted': {
@@ -201,10 +208,11 @@ function build(part: GridPart, ctx: Ctx, g: number): Geo {
   }
   const hole = (x: number, y: number, k: number, border = true): Feature => ({ a: [x, y], b: [x, y], type: typeAt(k, border) })
   // The widest hole type in use sets the strip width; the edge margin is half of it.
-  const half = (fs: Feature[]) => Math.max(...fs.map((f) => holeSpec(ctx.profile, f.type).width)) / 2
+  const margin = (part as { margin?: number }).margin // the user's edge margin, when set
+  const half = (fs: Feature[]) => margin ?? Math.max(...fs.map((f) => holeSpec(ctx.profile, f.type).width)) / 2
   // Positions that do not sit on the grid (rings, arcs) are placed for the widest type the mix can use.
   const mixTypes: HoleType[] = !mix ? [ctx.profile.hole] : mix === 'all-m3' ? ['m3'] : mix === 'all-technic' ? ['technic'] : ['m3', 'technic']
-  const mMax = Math.max(...mixTypes.map((t) => holeSpec(ctx.profile, t).width)) / 2
+  const mMax = margin ?? Math.max(...mixTypes.map((t) => holeSpec(ctx.profile, t).width)) / 2
   const grid = (cols: number, rows: number, keep: (i: number, j: number) => boolean) => {
     const fs: Feature[] = []
     for (let j = 0; j < rows; j++)

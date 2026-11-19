@@ -271,3 +271,5 @@ input.text {
 .top .brand small { white-space: nowrap; }
 @media (max-width: 1360px) { .top .brand small { display: none; } }
 .labels.five { grid-template-columns: repeat(5, 1fr); }
+.link.inline { font-size: 12px; padding: 0; }
+input.num::placeholder { color: var(--mute); }

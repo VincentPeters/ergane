@@ -327,6 +327,7 @@ Component library entry:
 - **Joints.** In a box, front and back own the corner cubes (fingers at both ends of every edge); the sides own them toward bottom and lid; bottom and lid own none. Holes on a jointed edge sit the material thickness further in.
 - **Wheels and pulleys** are stacks of discs (flange, core, flange), since a sheet cannot hold an edge groove. A GT2 pulley uses as many cores as fill the 6 mm belt. Turning parts take a bolt hole or a Technic axle cross, plus four grid holes one pitch out when large enough.
 - **Gear flanks** grow by g/R along the circle instead of along their true normal; the difference is under 7 % of half the kerf.
+- **Edge margin** (section 6) is an optional per-part override; unset, it is half the strip width. **Corner radius** is a parameter on plates; strips and arms have fully round ends, and frames, mounting and adapter plates use the edge margin as their radius.
 - **Sheet layout** packs each piece whole (a box's faces stay together) and does not rotate pieces.
 - **Kits from files and links** are untrusted: fields are allowlisted per part type, everything is clamped, links stop inflating at 1 MB, and a kit over 1000 pieces or 100 000 cut paths is refused.
 

@@ -114,7 +114,7 @@ function describe(p: GridPart, holes: number, pitch: number): [string, string] {
 function partToParams(part: GridPart): [ShapeKind, Record<string, Value>] {
   if (part.type === 'mount') {
     const r = part.component.rect
-    return ['mount', { component: part.component.id, border: part.border, w: r?.w ?? '', h: r?.h ?? '', d: r?.d ?? '' }]
+    return ['mount', { component: part.component.id, border: part.border, w: r?.w ?? '', h: r?.h ?? '', d: r?.d ?? '', ...(part.margin !== undefined ? { margin: part.margin } : {}) }]
   }
   const { type, label: _label, ...rest } = part as GridPart & { label?: boolean }
   return [type as ShapeKind, rest as Record<string, Value>]
@@ -230,7 +230,7 @@ export default function Page() {
   }
 
   const part: Part = kind === 'coupon' ? { type: 'coupon' }
-    : kind === 'mount' ? clampPart({ type: 'mount', component: resolveComponent(library, params.mount), border: Number(params.mount.border), label })
+    : kind === 'mount' ? clampPart({ type: 'mount', component: resolveComponent(library, params.mount), border: Number(params.mount.border), label, margin: params.mount.margin } as Part)
     : clampPart({ type: kind, ...params[kind], label } as Part)
   const setParam = (key: string, v: Value) => kind !== 'coupon' && setParams({ ...params, [kind]: { ...params[kind], [key]: v } })
   const pressFit = pressFits[kk] ?? PRESS_FIT
@@ -398,6 +398,13 @@ export default function Page() {
                 </select>
               </label>
             )}
+            <label className="row">
+              <span>Edge margin <small>mm{params[part.type].margin !== undefined && <> · <button className="link inline" onClick={() => {
+                const { margin: _m, ...rest } = params[part.type]; setParams({ ...params, [part.type]: rest })
+              }}>auto</button></>}</small></span>
+              <DecimalInput value={params[part.type].margin === undefined ? NaN : Number(params[part.type].margin)} placeholder="auto"
+                valid={(v) => v >= 2 && v <= 20} onCommit={(v) => setParam('margin', v)} aria-label="Edge margin in millimetres" />
+            </label>
             <label className="row check">Engraved label
               <input type="checkbox" checked={label} onChange={(e) => setLabel(e.target.checked)} />
             </label>

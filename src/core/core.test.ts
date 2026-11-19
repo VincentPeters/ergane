@@ -305,3 +305,14 @@ describe('svg', () => {
     expect(svg.indexOf('cut-inner')).toBeLessThan(svg.indexOf('cut-outer'))
   })
 })
+
+describe('edge margin (spec 6)', () => {
+  it('sets the distance from the outer hole centre to the edge, and the rules check it', () => {
+    const wide = generate({ type: 'strip', holes: 11, rows: 1, margin: 6 } as Part, ctx(noKerf))
+    expect(bbox(wide).w).toBeCloseTo(80 + 12, 6)
+    expect(bbox(wide).h).toBeCloseTo(12, 6)
+    const tight = { type: 'strip', holes: 11, rows: 1, margin: 3 } as Part
+    expect(validate(tight, ctx()).map((i) => i.rule)).toEqual(['edge-web']) // 3 - 1.6 = 1.4 < 2.0
+    expect(clampPart({ type: 'plate', cols: 3, rows: 3, pattern: 'full', radius: 2, margin: 99 } as Part)).toMatchObject({ margin: 20 })
+  })
+})
