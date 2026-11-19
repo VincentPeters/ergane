@@ -1,8 +1,8 @@
 # Cutgrid: spec for a laser cut construction kit generator
 
-Version 0.2, 19 November 2026. Working title: Cutgrid.
+Version 0.3, 19 November 2026. Working title: Cutgrid.
 
-Decisions in this version: 8 mm Technic grid as the base, M3 as the default fastener, 3 mm acrylic as the default material, Next.js as the framework, machine-neutral export.
+Decisions in this version: 8 mm Technic grid as the base, M3 as the default fastener, 3 mm acrylic as the default material, Next.js as the framework, machine-neutral export, Vercel hosting, and the Ergane's Atlas visual world (see DESIGN.md). Product truth is recorded in PRODUCT.md. Section 16 lists what v0.3 decided during implementation.
 
 ## 1. Goal
 
@@ -245,12 +245,13 @@ Next.js with TypeScript, exported as a static site. No backend, no accounts. Any
 - Next.js App Router with static export. Hosting on any static host.
 - All geometry runs in the browser. No file leaves the user's machine.
 - Geometry core as a separate TypeScript package with no React dependency. Input: element definition plus profile, material and fit. Output: a list of closed paths, each tagged engrave, inner or outer.
-- Offsetting through a polygon clipping library (Clipper2 port).
-- Exporters for SVG, DXF and PDF consume the same path list.
+- Kerf offsetting is analytic: every outline is built from primitives (capsules, rounded convex polygons, arc bands, involute flanks) that take a grow distance. A polygon clipping library (polygon-clipping, MIT) handles unions and cut-outs only.
+- Exporters for SVG, DXF and PDF consume the same path list. The DXF R12, PDF and ZIP writers are small and hand-written, with no dependency.
 - Preview rendered as inline SVG from the same path list, so preview and export always match.
 - State stored in the browser (local storage), in export files and in shareable URLs.
 - Unit tests on the geometry core with Vitest.
 - A command line wrapper around the geometry core for batch generation, later.
+- Static export deployed on Vercel. Kit share links carry the deflated kit JSON in the URL fragment, which never reaches a server.
 
 ## 12. Data model
 
@@ -298,18 +299,39 @@ Component library entry:
 
 ## 14. Milestones
 
-| Phase | Content |
-|---|---|
-| M1 | Next.js project, geometry core, strip and plate, GRID8-M3 profile, SVG export, kerf compensation |
-| M2 | Calibration coupon, material presets, GRID8-TECHNIC and MECCANO profiles, hole mix, validation |
-| M3 | Remaining structural parts, joints, box generator |
-| M4 | Mounting plate library, hybrid and adapter plates |
-| M5 | Kits, sheet layout, DXF and PDF export, parts list |
-| M6 | Motion parts |
+| Phase | Content | Status (v0.3) |
+|---|---|---|
+| M1 | Next.js project, geometry core, strip and plate, GRID8-M3 profile, SVG export, kerf compensation | Done |
+| M2 | Calibration coupon, material presets, GRID8-TECHNIC and MECCANO profiles, hole mix, validation | Done, plus CUSTOM profile and user material presets |
+| M3 | Remaining structural parts, joints, box generator | Done |
+| M4 | Mounting plate library, hybrid and adapter plates | Done; hybrid plates are the hole mix on the 8 mm grid |
+| M5 | Kits, sheet layout, DXF and PDF export, parts list | Done, plus machine profiles and share links |
+| M6 | Motion parts | Done |
 
 ## 15. Open questions
 
 1. Strip width for Technic hole strips in acrylic: 12 mm is a proposal. Cut a test strip at 8, 10 and 12 mm and check for cracks.
 2. Keep MECCANO in v1 or move the profile to a later phase. The 8 mm grid covers most builds.
-3. Hosting location and public name for the app.
+3. Public name for the app. Hosting is decided: Vercel.
 4. Extra components for the library beyond the starter list in 5.3.
+5. Confirm the entries marked "verify" in src/core/components.json (ESP32 DevKit, SG90, TT motor, battery holder) against datasheets.
+6. Licence for the code and for designs made with it (open source and open design are brand commitments; the licence is not chosen).
+
+## 16. Decisions made during implementation (v0.3)
+
+- **Starter kit counts.** Section 9 gives no quantities for strips and plates: four of each strip, two of each plate.
+- **Edge margin** is half the widest hole type's strip width in use, on both axes, so Technic strips have round ends (12 mm wide, 92 mm long for 11 holes).
+- **Labels** engrave between the first two holes one pitch apart, shrunk to fit, and are skipped when the text would be under 1 mm tall.
+- **Calibration coupon.** Each hole is cut with a candidate kerf (0.05 mm steps) and engraved with it, so the best hole's label is the kerf to enter. The five slots work the same way for the press fit of tab slots (thickness minus press fit). Both are stored per machine and material pair.
+- **Validation** measures webs between any holes and slots and any edge, including the rule that a part fits the chosen sheet (rule 3). A mounting component may declare a smaller minimum web for its own plate: the SG90's screw ears sit about 1.3 mm from its body cutout. The UI names the relaxation.
+- **Joints.** In a box, front and back own the corner cubes (fingers at both ends of every edge); the sides own them toward bottom and lid; bottom and lid own none. Holes on a jointed edge sit the material thickness further in.
+- **Wheels and pulleys** are stacks of discs (flange, core, flange), since a sheet cannot hold an edge groove. A GT2 pulley uses as many cores as fill the 6 mm belt. Turning parts take a bolt hole or a Technic axle cross, plus four grid holes one pitch out when large enough.
+- **Gear flanks** grow by g/R along the circle instead of along their true normal; the difference is under 7 % of half the kerf.
+- **Sheet layout** packs each piece whole (a box's faces stay together) and does not rotate pieces.
+- **Kits from files and links** are untrusted: fields are allowlisted per part type, everything is clamped, links stop inflating at 1 MB, and a kit over 1000 pieces or 100 000 cut paths is refused.
+
+## 17. Acceptance status (v0.3)
+
+Automated (Vitest): the 11-hole strip measures 88 × 8 mm nominal and 88.2 × 8.2 mm as cut; webs, edge webs and sheet fit are tested for every part type; every validation rule has a test; the starter kit exports in well under 2 seconds; DXF, PDF and ZIP structure, share links and kit round trips are tested.
+
+Needs a laser and calipers, not yet done: bolt and axle fit on cut parts, hole-for-hole alignment with a Technic beam and a Meccano strip, the values in 3.3, the Technic strip width question in 15.1, and opening the SVG in LightBurn, Inkscape and Illustrator.
