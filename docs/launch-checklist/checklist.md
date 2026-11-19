@@ -11,7 +11,7 @@ GitHub, with issues as the support channel. Owner is in Belgium, so EU rules (GD
 
 ## Launch gate
 Safe to go public once every **[Critical]** box that applies is `[x]`.
-Open criticals: deploy `bf324df` to production (headers, privacy page, Sentry), licence (8), Sentry IP
+Open criticals: licence (8), Sentry IP
 setting + DPA (6, 8), uptime monitor (6), rollback drill (11), cross-browser check (12), Core Web Vitals (2),
 keyboard + WCAG check (4), physical tests (12).
 
@@ -22,7 +22,7 @@ browser. Untrusted input = kit files, share links and component JSON, all clampe
 - [x] [Critical] Validate untrusted input — `clampPart`, `parseKit`, `sanitizeComponent`, `sanitizeMachine` in `src/core/*`; kit size and link inflation caps; CSV formula guard (`src/core/export.ts`); tests in `export.test.ts`.
 - [x] [Critical] Secrets out of code and git — only secret is the Vercel OIDC token in `.env.local`, gitignored; `git log -S VERCEL_OIDC` empty.
 - [x] [Critical] Preview builds not public — Vercel deployment protection `vercel_authentication` on previews.
-- [~] [Critical] Security response headers — CSP, `frame-ancestors 'none'` + X-Frame-Options, nosniff, Referrer-Policy, Permissions-Policy in `vercel.json` (`bf324df`); verified on preview `cut-grid-dsrc2caj7` and app flow tested under the CSP (2026-11-19). Live once deployed to production.
+- [x] [Critical] Security response headers — CSP, `frame-ancestors 'none'` + X-Frame-Options, nosniff, Referrer-Policy, Permissions-Policy in `vercel.json` (`bf324df`); verified on preview `cut-grid-dsrc2caj7` and app flow tested under the CSP (2026-11-19). Live on ergane.vinnie.studio since deployment `cut-grid-7d5bbvw9r` (2026-11-19).
 - N/A — Authn/authz, OAuth redirects, bucket lockdown, encryption at rest: no accounts, keys or storage.
 - N/A — WAF / rate limiting: no server endpoints; Vercel's platform DDoS mitigation covers the static CDN.
 - [x] [Recommended] Dependency scan — `npm audit --omit=dev`: 0 vulnerabilities (2026-11-19).
@@ -89,7 +89,7 @@ components) lives only in each visitor's browser storage.
 ## 8. Legal & Compliance
 **Scope:** EU owner and audience. Personal data processed: IP addresses by Vercel (hosting and
 analytics) and Sentry (error reports). No cookies.
-- [~] [Critical] Privacy notice — `/privacy` (`app/privacy/page.tsx`), linked from the library rail; contact hello@vinnie.studio. Live once deployed. Its claim that Sentry stores no IP needs the Sentry setting in todo A3.
+- [x] [Critical] Privacy notice — `/privacy` (`app/privacy/page.tsx`), linked from the library rail; contact hello@vinnie.studio; live. Share-link kits are stripped from every URL Sentry and analytics send (`a169ee9`). Its claim that Sentry stores no IP needs the Sentry setting in todo A3.
 - [ ] [Critical] Licence and terms — code licence and licence for designs made with Ergane (open source and open design are brand commitments); needed before the repo goes public.
 - N/A — Consent banner: no cookies or non-essential storage; analytics must be cookieless (Vercel Web Analytics is).
 - [~] [Critical] DPAs with processors — Vercel's DPA is part of its terms; Sentry's DPA must be accepted in the dashboard (Settings → Legal & Compliance).

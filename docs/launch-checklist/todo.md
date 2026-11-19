@@ -4,7 +4,7 @@ Steps for the open items in [checklist.md](./checklist.md). Ordered launch-block
 
 ## A. Launch-blocking (applicable Criticals)
 
-### A0. Deploy `bf324df` to production — [layers 1, 6, 8]
+### A0. Deploy `bf324df` to production — [layers 1, 6, 8] (done 2026-11-19, deployment `cut-grid-7d5bbvw9r`)
 `vercel deploy --prod`, then check `curl -sI https://ergane.vinnie.studio` shows the CSP and `/privacy` loads.
 Done when: both are live on ergane.vinnie.studio.
 
