@@ -11,9 +11,9 @@ GitHub, with issues as the support channel. Owner is in Belgium, so EU rules (GD
 
 ## Launch gate
 Safe to go public once every **[Critical]** box that applies is `[x]`.
-Open criticals: security headers (1), privacy notice + licence (8), error tracking + uptime
-monitoring (6), rollback tested (11), cross-browser check (12), runbook + incident plan (13),
-Core Web Vitals verified (2), keyboard + WCAG check (4).
+Open criticals: deploy `bf324df` to production (headers, privacy page, Sentry), licence (8), Sentry IP
+setting + DPA (6, 8), uptime monitor (6), rollback drill (11), cross-browser check (12), Core Web Vitals (2),
+keyboard + WCAG check (4), physical tests (12).
 
 ## 1. Security
 **Scope:** static site. No accounts, no server endpoints, no database; all input is processed in the
@@ -22,7 +22,7 @@ browser. Untrusted input = kit files, share links and component JSON, all clampe
 - [x] [Critical] Validate untrusted input — `clampPart`, `parseKit`, `sanitizeComponent`, `sanitizeMachine` in `src/core/*`; kit size and link inflation caps; CSV formula guard (`src/core/export.ts`); tests in `export.test.ts`.
 - [x] [Critical] Secrets out of code and git — only secret is the Vercel OIDC token in `.env.local`, gitignored; `git log -S VERCEL_OIDC` empty.
 - [x] [Critical] Preview builds not public — Vercel deployment protection `vercel_authentication` on previews.
-- [ ] [Critical] Security response headers: CSP, frame-ancestors, X-Content-Type-Options, Referrer-Policy, Permissions-Policy — none set (live check). Static export ignores `next.config` headers; needs `vercel.json`.
+- [~] [Critical] Security response headers — CSP, `frame-ancestors 'none'` + X-Frame-Options, nosniff, Referrer-Policy, Permissions-Policy in `vercel.json` (`bf324df`); verified on preview `cut-grid-dsrc2caj7` and app flow tested under the CSP (2026-11-19). Live once deployed to production.
 - N/A — Authn/authz, OAuth redirects, bucket lockdown, encryption at rest: no accounts, keys or storage.
 - N/A — WAF / rate limiting: no server endpoints; Vercel's platform DDoS mitigation covers the static CDN.
 - [x] [Recommended] Dependency scan — `npm audit --omit=dev`: 0 vulnerabilities (2026-11-19).
@@ -73,7 +73,7 @@ browser. Untrusted input = kit files, share links and component JSON, all clampe
 
 ## 6. Monitoring & Observability
 **Scope:** browser errors and site availability; no server logs.
-- [ ] [Critical] Error tracking with context — Sentry chosen, not installed.
+- [~] [Critical] Error tracking — Sentry project `studio-vinnie/ergane` (EU) created, `@sentry/browser` wired in `app/Telemetry.tsx`, DSN in Vercel production env. Open: turn off IP storage and confirm the new-issue email alert in Sentry; check a test error after the production deploy.
 - [ ] [Critical] Uptime monitoring with alerts — chosen, not set up.
 - N/A — Centralised server logging: no server; Vercel request logs cover static hits.
 - N/A — APM, business alerts: no backend or revenue paths.
@@ -89,18 +89,18 @@ components) lives only in each visitor's browser storage.
 ## 8. Legal & Compliance
 **Scope:** EU owner and audience. Personal data processed: IP addresses by Vercel (hosting and
 analytics) and Sentry (error reports). No cookies.
-- [ ] [Critical] Privacy notice — what is processed (hosting logs, cookieless analytics, error reports), by whom, retention, rights, contact.
+- [~] [Critical] Privacy notice — `/privacy` (`app/privacy/page.tsx`), linked from the library rail; contact hello@vinnie.studio. Live once deployed. Its claim that Sentry stores no IP needs the Sentry setting in todo A3.
 - [ ] [Critical] Licence and terms — code licence and licence for designs made with Ergane (open source and open design are brand commitments); needed before the repo goes public.
 - N/A — Consent banner: no cookies or non-essential storage; analytics must be cookieless (Vercel Web Analytics is).
-- [ ] [Critical] DPAs with processors — Vercel (DPA in its terms), Sentry (accept its DPA in the dashboard).
+- [~] [Critical] DPAs with processors — Vercel's DPA is part of its terms; Sentry's DPA must be accepted in the dashboard (Settings → Legal & Compliance).
 - N/A — DSAR mechanism: no accounts; nothing stored server-side about a person.
 - [x] [Recommended] Data minimisation — no accounts, no tracking cookies, share links keep the kit after `#` so it never reaches a server.
 - [ ] [Nice-to-have] Legal review of the notice.
 
 ## 9. Analytics
-- [ ] [Recommended] Cookieless analytics from day one — Vercel Web Analytics chosen, not installed.
+- [~] [Recommended] Cookieless analytics — `@vercel/analytics` in the layout; enable Web Analytics in the Vercel project dashboard.
 - N/A — Conversion funnels: no signup or payment.
-- [ ] [Recommended] Count kit exports as a custom event (the one action that means "it worked").
+- [x] [Recommended] Export events — `part_export` and `kit_export` tracked (`app/page.tsx`, `app/KitDrawer.tsx`).
 - [x] [Nice-to-have] Feedback channel — GitHub issues (once the repo is public).
 
 ## 10. DNS / Domain / TLS / Email
@@ -128,9 +128,9 @@ analytics) and Sentry (error reports). No cookies.
 
 ## 13. Documentation & Operational Readiness
 **Scope:** one maintainer.
-- [ ] [Critical] Incident plan — who notices (uptime/Sentry alert to email), how to roll back, how to tell users.
-- [ ] [Critical] Runbook — deploy, rollback, DNS, where storage keys live; there is no README.
-- [~] [Recommended] Architecture docs — `docs/specs.md` (v0.3), `PRODUCT.md`, `DESIGN.md`; no README.
+- [x] [Critical] Incident plan — "When something breaks" in `README.md`.
+- [x] [Critical] Runbook — `README.md`: develop, deploy, environment, DNS, rollback, storage keys.
+- [x] [Recommended] Architecture docs — `README.md`, `docs/specs.md` (v0.3), `PRODUCT.md`, `DESIGN.md`.
 - [ ] [Recommended] Support channel — GitHub issues, once the repo is public.
 - [ ] [Recommended] Launch-day post for the maker communities.
 - [ ] [Nice-to-have] Review this checklist after launch.

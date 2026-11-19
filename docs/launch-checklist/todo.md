@@ -4,7 +4,11 @@ Steps for the open items in [checklist.md](./checklist.md). Ordered launch-block
 
 ## A. Launch-blocking (applicable Criticals)
 
-### A1. Security headers — [layer 1]
+### A0. Deploy `bf324df` to production — [layers 1, 6, 8]
+`vercel deploy --prod`, then check `curl -sI https://ergane.vinnie.studio` shows the CSP and `/privacy` loads.
+Done when: both are live on ergane.vinnie.studio.
+
+### A1. Security headers — [layer 1] (done in `bf324df`; kept for reference)
 Static export ignores `next.config` headers, so set them in `vercel.json` at the repo root:
 ```json
 {
@@ -35,11 +39,13 @@ Done when: `curl -sI https://ergane.vinnie.studio` shows all five headers and th
 Done when: `/privacy` loads, `LICENSE` is in the repo, and both are linked from the app.
 
 ### A3. Error tracking (Sentry) — [layer 6]
-1. Create a Sentry project (EU region) and accept its DPA in the dashboard.
-2. Add `@sentry/nextjs` (browser only); in `app/layout.tsx` or an `instrumentation-client.ts`, init with the DSN, `sendDefaultPii: false`, a low `tracesSampleRate` (or 0).
-3. Allow the Sentry ingest origin in the A1 CSP.
-4. Set an alert rule: email on a new issue.
-Done when: a test error thrown in a preview appears in Sentry and sends an email.
+Done: project `studio-vinnie/ergane` (EU), SDK wired, DSN in Vercel production env, CSP allows the ingest host.
+Left, in the Sentry dashboard:
+1. Project settings → Security & Privacy → turn on "Prevent Storing of IP Addresses" (the privacy page promises it).
+2. Organisation settings → Legal & Compliance → accept the DPA.
+3. Alerts → confirm a "new issue" rule emails you (create one if the project has none).
+4. After A0, run `throw new Error('sentry test')` in the browser console on ergane.vinnie.studio.
+Done when: the test error shows in Sentry without an IP address, and the alert email arrives.
 
 ### A4. Uptime monitoring — [layer 6]
 Create a free HTTP check (UptimeRobot or Better Stack) for `https://ergane.vinnie.studio`, every 5 min, alerting your email.
@@ -54,7 +60,7 @@ Done when: both commands worked and the steps are written in the runbook (A7).
 Open the site in Firefox and Safari (desktop + iPhone): edit a part, export SVG, open the kit drawer, load the starter kit, export the kit ZIP, copy and open a share link.
 Done when: all steps work in both browsers with no console errors.
 
-### A7. Runbook and incident plan — [layer 13]
+### A7. Runbook and incident plan — [layer 13] (done: `README.md`)
 Add `README.md` with: what Ergane is, `npm i` / `npm run dev` / `npm test`, deploy (`vercel deploy --prod` or git push once B1 is done), rollback (A5), DNS (Cloudflare CNAME `ergane` → `9fb6b9fb65d45ff7.vercel-dns-016.com`, DNS only), browser storage keys (`cutgrid.*`, kept for compatibility), and an incident section: alert arrives → check Sentry/uptime → roll back → post a note on GitHub.
 Done when: a fresh clone can be run, tested and deployed from the README alone.
 
@@ -80,8 +86,8 @@ Done when: a pull request shows a passing check and a preview URL; merging deplo
 Add `app/robots.ts` and `app/sitemap.ts` (static export supports both), `metadataBase: new URL('https://ergane.vinnie.studio')` plus `alternates.canonical: '/'` and `openGraph`/`twitter` fields in `app/layout.tsx`, and a 1200×630 share image (`app/opengraph-image.png`).
 Done when: `/robots.txt` and `/sitemap.xml` return 200 and a link posted in Slack/Discord shows a preview card.
 
-### B3. Cookieless analytics + export event — [layer 9]
-Install `@vercel/analytics`, add `<Analytics />` to the layout, enable Web Analytics in the Vercel project, and `track('kit_export')` / `track('part_export')` in the export handlers.
+### B3. Cookieless analytics — [layer 9]
+Code done (`<Analytics />`, `part_export` and `kit_export` events). Enable Web Analytics in the Vercel dashboard (project `cut-grid` → Analytics → Enable), then redeploy.
 Done when: visits and export events show in the Vercel dashboard.
 
 ### B4. MFA and header scan — [layer 1]
