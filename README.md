@@ -23,12 +23,6 @@ npm run check    # typecheck + tests + build, the same as CI
 `app/` is the Next.js UI (static export). The name was Cutgrid during development; the repository folder,
 package name and browser storage keys (`cutgrid.*`) keep it so saved data stays readable.
 
-## Run your own copy
-
-`npm run build` writes a static site to `out/` that any static host can serve; `vercel.json` holds the
-security headers used on the live site. Error reporting is off unless `NEXT_PUBLIC_SENTRY_DSN` is set at
-build time; visit counting only works when the site is hosted on Vercel with Web Analytics enabled.
-
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). Bugs and part requests go in
