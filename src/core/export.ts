@@ -97,7 +97,11 @@ export const partId = (line: number) => `P${String(line + 1).padStart(2, '0')}`
 
 /** Spec 8 parts list: part ID, type, parameters, quantity. */
 export function partsCSV(kit: Kit): string {
-  const cell = (v: string) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v)
+  // A cell that starts like a formula is prefixed with ' so spreadsheets show it as text instead of running it.
+  const cell = (raw: string) => {
+    const v = /^[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw
+    return /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v
+  }
   const params = (p: GridPart) => Object.entries(p)
     .filter(([k]) => k !== 'type')
     .map(([k, v]) => `${k}=${typeof v === 'object' ? (v as { id?: string }).id ?? JSON.stringify(v) : v}`).join('; ')

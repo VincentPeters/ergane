@@ -40,6 +40,28 @@ describe('kits', () => {
     expect(await decodeKit('not-a-kit')).toMatch(/does not contain/)
   })
 
+  it('keeps only known part fields, so no stray text reaches the parts list', () => {
+    const k = parseKit(JSON.stringify({ parts: [{ type: 'strip', holes: 5, rows: 1, qty: 1, note: '=HYPERLINK("http://x")' }] }))
+    if (typeof k === 'string') throw new Error(k)
+    expect(Object.keys(k.items[0].part).sort()).toEqual(['holes', 'label', 'rows', 'type'])
+    expect(partsCSV(k)).not.toContain('HYPERLINK')
+  })
+
+  it('refuses kits too large to lay out in the browser', async () => {
+    const many = { parts: Array.from({ length: 3 }, () => ({ type: 'strip', holes: 3, rows: 1, qty: 500 })) }
+    expect(parseKit(JSON.stringify(many))).toMatch(/at most 1000 pieces/)
+    const dense = { parts: Array.from({ length: 50 }, () => ({ type: 'plate', cols: 50, rows: 50, pattern: 'full', radius: 2, qty: 1 })) }
+    expect(parseKit(JSON.stringify(dense))).toMatch(/too many cuts/)
+    // A tiny link that inflates past 1 MB is stopped while decompressing.
+    const bomb = new TextEncoder().encode(`{"parts":[],"name":"${'a'.repeat(2_000_000)}"}`)
+    const z = new Uint8Array(await new Response(new Blob([bomb]).stream().pipeThrough(new CompressionStream('deflate-raw'))).arrayBuffer())
+    let s = ''
+    for (const b of z) s += String.fromCharCode(b)
+    const payload = btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+    expect(payload.length).toBeLessThan(50_000)
+    expect(await decodeKit(payload)).toMatch(/does not contain/)
+  })
+
   it('lists parts as CSV with IDs, types, parameters and quantities', () => {
     const csv = partsCSV(starterKit()).trim().split('\n')
     expect(csv[0]).toBe('part_id,type,parameters,quantity')

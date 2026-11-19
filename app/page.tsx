@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { COMPONENTS, parseComponents, type ComponentDef } from '../src/core/components'
 import { DEFAULT_MACHINE, exportPart, type Format, type Machine, type OutFile } from '../src/core/export'
-import { decodeKit, emptyKit, type Kit } from '../src/core/kit'
+import { decodeKit, emptyKit, kitToJSON, parseKit, type Kit } from '../src/core/kit'
 import { zip } from '../src/core/zip'
 import { DecimalInput, Num } from './inputs'
 import { KitDrawer } from './KitDrawer'
@@ -389,7 +389,10 @@ export default function Page() {
               </div>
             )}
             <button className="ghost wide" onClick={() => {
-              setKit({ ...kit, items: [...kit.items, { part: part as GridPart, qty: 1 }] })
+              const next = { ...kit, items: [...kit.items, { part: part as GridPart, qty: 1 }] }
+              const ok = parseKit(kitToJSON(next)) // the same limits a reloaded kit must meet
+              if (typeof ok === 'string') return setNotice(ok)
+              setKit(next)
               setNotice(`Added ${title} to ${kit.name}.`)
             }}>Add to kit</button>
           </>

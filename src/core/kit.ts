@@ -2,15 +2,29 @@
 // Kit files and share links are untrusted input: parseKit rebuilds every field through the core's clamps.
 import { COMPONENTS } from './components'
 import {
-  MATERIALS, PROFILES, clampPart, defaultMix, type Fit, type GridPart, type HoleMix, type Part,
+  MATERIALS, PROFILES, clampPart, defaultMix, generate, type Ctx, type Fit, type GridPart, type HoleMix, type Part,
 } from './geometry'
+
+const BUDGET_CTX: Ctx = { profile: PROFILES[0], material: MATERIALS[0], fit: 'normal' }
 import { SHEET_PRESETS, type Sheet } from './layout'
 
 export type KitItem = { part: GridPart; qty: number }
 export type Kit = { name: string; profile: string; holeMix: HoleMix; material: string; fit: Fit; sheet: Sheet; items: KitItem[] }
 
-const PART_TYPES = ['strip', 'slotted', 'plate', 'angle', 'gusset', 'frame', 'connector', 'disc', 'curved',
-  'spacer', 'bracket', 'box', 'nutjoint', 'mount', 'adapter'] as const
+// The fields each part type may carry. Anything else in an imported kit is dropped, so no stray text
+// reaches the parts list or the saved kit.
+const PART_KEYS: Record<string, string[]> = {
+  strip: ['holes', 'rows'], slotted: ['holes', 'slot'], plate: ['cols', 'rows', 'pattern', 'radius'],
+  angle: ['armA', 'armB', 'angle'], gusset: ['holes'], frame: ['cols', 'rows', 'border'], connector: ['shape', 'arm'],
+  disc: ['diameter', 'count'], curved: ['radius', 'angle'], spacer: ['outer', 'quantity'], bracket: ['cols', 'base', 'height'],
+  box: ['cols', 'rows', 'height', 'lid'], nutjoint: ['cols', 'rows', 'bolt'], mount: ['component', 'border'],
+  adapter: ['cols8', 'cols127', 'rows'],
+}
+const PART_TYPES = Object.keys(PART_KEYS)
+// Ceiling on what a kit may ask the browser to draw, so a hostile file or link cannot freeze the page
+// (a loaded kit is also saved and reloaded on every visit).
+export const MAX_PIECES = 1000
+export const MAX_PATHS = 100_000
 const MIXES: HoleMix[] = ['all-m3', 'all-technic', 'alternating', 'border-technic']
 const FITS: Fit[] = ['loose', 'normal', 'tight']
 
@@ -66,10 +80,17 @@ export function parseKit(json: string): Kit | string {
   const profile = PROFILES.find((p) => p.id === id(raw.profile)) ?? PROFILES[0]
   const sheet = (raw.sheet ?? {}) as Record<string, unknown>
   const items: KitItem[] = []
+  let pieces = 0, paths = 0
   for (const p of raw.parts as Record<string, unknown>[]) {
-    if (!p || typeof p !== 'object' || !PART_TYPES.includes(p.type as never)) continue
-    const { qty, ...rest } = p
-    items.push({ part: clampPart({ ...rest, label: rest.label === true } as Part) as GridPart, qty: Math.round(num(qty, 1, 500, 1)) })
+    if (!p || typeof p !== 'object' || typeof p.type !== 'string' || !PART_TYPES.includes(p.type)) continue
+    const fields = Object.fromEntries(PART_KEYS[p.type].filter((k) => k in p).map((k) => [k, p[k]]))
+    const part = clampPart({ type: p.type, ...fields, label: p.label === true } as Part) as GridPart
+    const qty = Math.round(num(p.qty, 1, 500, 1))
+    pieces += qty
+    paths += qty * generate(part, BUDGET_CTX).length
+    if (pieces > MAX_PIECES) return `A kit can hold at most ${MAX_PIECES} pieces.`
+    if (paths > MAX_PATHS) return 'This kit has too many cuts to lay out in the browser. Split it into smaller kits.'
+    items.push({ part, qty })
   }
   return {
     name: typeof raw.name === 'string' && raw.name.trim() ? raw.name.trim().slice(0, 60) : 'Imported kit',
@@ -89,8 +110,22 @@ const b64url = (bytes: Uint8Array) => {
 }
 const fromB64url = (s: string) => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0))
 
+const MAX_KIT_BYTES = 1_000_000 // inflated JSON; a deflate payload can expand a thousandfold
 async function pipe(data: Uint8Array, stream: CompressionStream | DecompressionStream) {
-  return new Uint8Array(await new Response(new Blob([data as BlobPart]).stream().pipeThrough(stream)).arrayBuffer())
+  const reader = new Blob([data as BlobPart]).stream().pipeThrough(stream).getReader()
+  const chunks: Uint8Array[] = []
+  let total = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    total += value.length
+    if (total > MAX_KIT_BYTES) { await reader.cancel(); throw new Error('kit too large') }
+    chunks.push(value)
+  }
+  const out = new Uint8Array(total)
+  let at = 0
+  for (const c of chunks) { out.set(c, at); at += c.length }
+  return out
 }
 
 /** Compact share-link payload: the kit JSON, deflated with the browser's own CompressionStream. */

@@ -33,7 +33,12 @@ export function KitDrawer(p: Props) {
   const preset = SHEET_PRESETS.findIndex(([w, h]) => w === kit.sheet.w && h === kit.sheet.h)
   const [savedIdx, setSavedIdx] = useState(0)
 
-  const setItem = (i: number, qty: number) => setKit({ ...kit, items: kit.items.map((it, k) => (k === i ? { ...it, qty: Math.max(1, Math.min(500, Math.round(qty))) } : it)) })
+  const setItem = (i: number, qty: number) => {
+    const next = { ...kit, items: kit.items.map((it, k) => (k === i ? { ...it, qty: Math.max(1, Math.min(500, Math.round(qty))) } : it)) }
+    const ok = parseKit(kitToJSON(next)) // the same limits a reloaded kit must meet
+    if (typeof ok === 'string') return p.setNotice(ok)
+    setKit(next)
+  }
   const exportAll = () => {
     if (!kit.items.length) return p.setNotice('The kit is empty. Add a part first.')
     if (badLines.size) return p.setNotice(`Fix ${[...badLines].map(partId).join(', ')} before exporting the kit.`)
