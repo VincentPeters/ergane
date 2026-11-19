@@ -1,5 +1,5 @@
 ---
-name: Cutgrid
+name: Ergane
 description: Laser cut construction kit generator on one shared hole grid, charted like a star atlas.
 colors:
   chart-navy: "#0f1a33"
@@ -112,7 +112,7 @@ components:
     rounded: "{rounded.plate}"
 ---
 
-# Design System: Cutgrid
+# Design System: Ergane
 
 ## Overview
 

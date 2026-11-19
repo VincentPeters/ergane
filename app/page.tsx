@@ -264,7 +264,7 @@ export default function Page() {
   return (
     <div className="app">
       <header className="top">
-        <div className="brand"><OwlMark />Cutgrid <small>open design</small></div>
+        <div className="brand"><OwlMark />Ergane <small>open design</small></div>
         <label className="f">Grid
           <select value={profileId} onChange={(e) => {
             const p = PROFILES.find((x) => x.id === e.target.value)!

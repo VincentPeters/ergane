@@ -7,8 +7,8 @@ const sans = Public_Sans({ subsets: ['latin'], weight: ['400', '500', '600'], va
 const serif = Spectral({ subsets: ['latin'], weight: ['300', '400'], style: ['italic'], variable: '--font-serif' })
 
 export const metadata: Metadata = {
-  title: 'Cutgrid',
-  description: 'Laser cut construction kit generator on one shared hole grid',
+  title: 'Ergane',
+  description: 'Ergane, the open construction grid: laser cut kit parts on one shared hole grid',
 }
 export const viewport: Viewport = { themeColor: '#0f1a33', colorScheme: 'dark' }
 

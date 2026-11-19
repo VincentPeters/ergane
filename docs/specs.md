@@ -1,12 +1,12 @@
-# Cutgrid: spec for a laser cut construction kit generator
+# Ergane: spec for a laser cut construction kit generator
 
-Version 0.3, 19 November 2026. Working title: Cutgrid.
+Version 0.3, 19 November 2026. Name: Ergane (working title was Cutgrid; the repository, Vercel project and browser storage keys keep that name).
 
 Decisions in this version: 8 mm Technic grid as the base, M3 as the default fastener, 3 mm acrylic as the default material, Next.js as the framework, machine-neutral export, Vercel hosting, and the Ergane's Atlas visual world (see DESIGN.md). Product truth is recorded in PRODUCT.md. Section 16 lists what v0.3 decided during implementation.
 
 ## 1. Goal
 
-Cutgrid generates laser cut files for a Meccano-style construction kit. You pick a grid standard, a material and an element type. The app draws the part, applies kerf compensation and exports a cut file.
+Ergane generates laser cut files for a Meccano-style construction kit. You pick a grid standard, a material and an element type. The app draws the part, applies kerf compensation and exports a cut file.
 
 Three outcomes:
 
@@ -312,7 +312,7 @@ Component library entry:
 
 1. Strip width for Technic hole strips in acrylic: 12 mm is a proposal. Cut a test strip at 8, 10 and 12 mm and check for cracks.
 2. Keep MECCANO in v1 or move the profile to a later phase. The 8 mm grid covers most builds.
-3. Public name for the app. Hosting is decided: Vercel.
+3. Decided: the app is named Ergane, after Athena Ergane, patron of craftspeople. Hosting is Vercel. Domain and trademark checks are not done.
 4. Extra components for the library beyond the starter list in 5.3.
 5. Confirm the entries marked "verify" in src/core/components.json (ESP32 DevKit, SG90, TT motor, battery holder) against datasheets.
 6. Licence for the code and for designs made with it (open source and open design are brand commitments; the licence is not chosen).

@@ -13,6 +13,7 @@ function write(key: string, value: unknown) {
 }
 
 // Kerf belongs to a machine and material pair (spec 7). Values saved before machines existed move to the default machine.
+// Keys keep the working title "cutgrid" so data saved before the rename to Ergane still loads.
 const KERF = 'cutgrid.kerf.v2', KERF_V1 = 'cutgrid.kerf.v1'
 export const kerfKey = (machine: string, material: string) => `${machine}:${material}`
 export function loadKerfs(): Record<string, number> {

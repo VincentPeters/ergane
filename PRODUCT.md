@@ -12,7 +12,7 @@ Primary: hobbyists at home with their own laser cutter. They build projects that
 
 ## Product Purpose
 
-Cutgrid (working title) generates laser cut files for a Meccano-style construction kit. The user picks a grid standard, a material and an element type; the app draws the part, applies kerf compensation and exports a cut file. Success: every part bolts to every other part, and to existing Technic or Meccano parts, on the first cut after calibration.
+Ergane generates laser cut files for a Meccano-style construction kit. The user picks a grid standard, a material and an element type; the app draws the part, applies kerf compensation and exports a cut file. Success: every part bolts to every other part, and to existing Technic or Meccano parts, on the first cut after calibration.
 
 ## Positioning
 
@@ -36,13 +36,13 @@ One shared hole grid (8 mm Technic pitch, M3 bolts by default) across every part
 
 ## Brand Commitments
 
-- The name is still open. "Cutgrid" is a working title; design must not depend on it.
-- The brand draws on a mythical god or deity as its figure. The specific deity is not yet chosen.
+- The name is Ergane, after Athena Ergane, patron of craftspeople. Tagline: "open construction grid". ("Cutgrid" was the working title and survives in the repository and project names.)
+- The brand figure is Athena Ergane, shown as her owl: the mark beside the name and the engraved figure behind the chart.
 - Open source and open design are core to the identity: the tool, and the kit designs it produces, are meant to be shared, remixed and built on.
 
 ## Evidence on Hand
 
-- Spec: docs/specs.md (v0.2).
+- Spec: docs/specs.md (v0.3).
 - No logo, imagery, users, testimonials or community exist yet. Do not fabricate any.
 - License for code and for generated designs is undecided.
 
