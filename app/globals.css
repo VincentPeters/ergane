@@ -1,0 +1,52 @@
+:root {
+  --bg: #f6f6f4;
+  --panel: #ffffff;
+  --text: #1c1c1a;
+  --muted: #6b6b66;
+  --line: #deddd8;
+  --accent: #c2410c;
+  --error: #b91c1c;
+  font-family: system-ui, sans-serif;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #161615;
+    --panel: #1f1f1d;
+    --text: #ececea;
+    --muted: #9a9a94;
+    --line: #34342f;
+    --accent: #fb923c;
+    --error: #f87171;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); }
+
+.app { display: grid; grid-template-rows: auto 1fr; height: 100dvh; }
+.top { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
+.top h1 { font-size: 18px; margin: 0 auto 4px 0; }
+.cols { display: grid; grid-template-columns: 180px 1fr 260px; min-height: 0; }
+.cols > * { padding: 16px; overflow: auto; }
+.library, .form { background: var(--panel); }
+.library { border-right: 1px solid var(--line); }
+.form { border-left: 1px solid var(--line); display: flex; flex-direction: column; gap: 12px; }
+@media (max-width: 760px) {
+  .cols { grid-template-columns: 1fr; }
+  .library, .form { border: 0; }
+}
+
+label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+input, select, button { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
+button { cursor: pointer; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+.library button { display: block; width: 100%; text-align: left; margin-bottom: 6px; }
+.library button[aria-pressed='true'] { border-color: var(--accent); color: var(--accent); }
+
+.stage { display: flex; flex-direction: column; gap: 8px; }
+.meta { font-size: 13px; color: var(--muted); }
+.preview { transform-origin: top left; }
+/* Export uses a 0.01 mm hairline; on screen draw 1 px regardless of zoom. */
+.preview svg * { stroke-width: 1px; vector-effect: non-scaling-stroke; }
+.issues { margin: 0; padding-left: 18px; color: var(--error); font-size: 13px; }
