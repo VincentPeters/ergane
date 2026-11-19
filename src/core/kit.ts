@@ -18,7 +18,8 @@ const PART_KEYS: Record<string, string[]> = {
   angle: ['armA', 'armB', 'angle'], gusset: ['holes'], frame: ['cols', 'rows', 'border'], connector: ['shape', 'arm'],
   disc: ['diameter', 'count'], curved: ['radius', 'angle'], spacer: ['outer', 'quantity'], bracket: ['cols', 'base', 'height'],
   box: ['cols', 'rows', 'height', 'lid'], nutjoint: ['cols', 'rows', 'bolt'], mount: ['component', 'border'],
-  adapter: ['cols8', 'cols127', 'rows'],
+  adapter: ['cols8', 'cols127', 'rows'], gear: ['teeth', 'module', 'bore'], rack: ['holes', 'module'],
+  wheel: ['diameter', 'groove', 'bore'], pulley: ['teeth', 'bore'],
 }
 const PART_TYPES = Object.keys(PART_KEYS)
 // Ceiling on what a kit may ask the browser to draw, so a hostile file or link cannot freeze the page

@@ -2,6 +2,7 @@
 // Units are mm. Coordinates follow SVG: x right, y down, origin at the nominal outline's top-left.
 import { text, textWidth } from './font'
 import { COMPONENTS, componentHoles, sanitizeComponent, type ComponentDef } from './components'
+import { AXLE_D, GT2, axleCross, gearOutline, gearRadii, pulleyOutline, pulleyRadius, rackOutline } from './motion'
 import { circle, closestSegSeg, difference, inside, rect, roundedBox, roundedConvex, sector, stadium, union, type Pt } from './shapes'
 
 export type Op = 'engrave' | 'inner' | 'outer'
@@ -61,7 +62,13 @@ export type Part =
   | { type: 'nutjoint'; cols: number; rows: number; bolt: number; label?: boolean }
   | { type: 'mount'; component: ComponentDef; border: number; label?: boolean }
   | { type: 'adapter'; cols8: number; cols127: number; rows: number; label?: boolean }
+  | { type: 'gear'; teeth: number; module: number; bore: Bore; label?: boolean }
+  | { type: 'rack'; holes: number; module: number; label?: boolean }
+  | { type: 'wheel'; diameter: number; groove: number; bore: Bore; label?: boolean }
+  | { type: 'pulley'; teeth: number; bore: Bore; label?: boolean }
   | { type: 'coupon' }
+/** The centre of a turning part: a round hole for a bolt, or a Technic axle cross. */
+export type Bore = 'hole' | 'axle'
 export type Lid = 'closed' | 'open'
 export type GridPart = Exclude<Part, { type: 'coupon' }>
 
@@ -76,6 +83,7 @@ const num = (v: unknown, lo: number, hi: number) => {
   const n = Number(v)
   return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : lo
 }
+const bore = (v: unknown): Bore => (v === 'axle' ? 'axle' : 'hole')
 export function clampPart(part: Part): Part {
   switch (part.type) {
     case 'strip': return { ...part, holes: int(part.holes, 2, 50), rows: int(part.rows, 1, 3) }
@@ -115,6 +123,10 @@ export function clampPart(part: Part): Part {
       return { ...part, component: typeof c === 'string' ? COMPONENTS[0] : c, border: int(part.border, 1, 3) }
     }
     case 'adapter': return { ...part, cols8: int(part.cols8, 2, 25), cols127: int(part.cols127, 2, 16), rows: int(part.rows, 2, 25) }
+    case 'gear': return { ...part, teeth: int(part.teeth, 8, 120), module: num(part.module, 0.8, 5), bore: bore(part.bore) }
+    case 'rack': return { ...part, holes: int(part.holes, 3, 50), module: num(part.module, 0.8, 5) }
+    case 'wheel': return { ...part, diameter: num(part.diameter, 24, 300), groove: num(part.groove, 1, 8), bore: bore(part.bore) }
+    case 'pulley': return { ...part, teeth: int(part.teeth, 12, 80), bore: bore(part.bore) }
     case 'coupon': return part
   }
 }
@@ -133,7 +145,7 @@ const GAP = 3 // mm between pieces of a multi-piece part
 const OUT = 1 // mm a notch extends past the edge, so the cut never shares a line with the outline
 
 /** A hole (a equals b) or a slot (a to b), cut at the hole type's diameter unless d gives its own. */
-type Feature = { a: Pt; b: Pt; type: HoleType; d?: number }
+type Feature = { a: Pt; b: Pt; type: HoleType; d?: number; axle?: boolean } // axle: cut as a Technic cross
 /** Outlines and features of a part. Outer rings grow by g, inner cutouts shrink by g. */
 type Geo = { outer: Pt[][]; inner: Pt[][]; features: Feature[]; corner: number; label: string; engrave?: Pt[][] }
 
@@ -193,6 +205,27 @@ function build(part: GridPart, ctx: Ctx, g: number): Geo {
     ]
     const outer = difference(rect(ox - g, oy - g, ox + w + g, oy + h + g), cuts)[0]
     return { outer, features, w, h }
+  }
+
+  // Centre bore of a turning part, plus four grid holes one pitch out when the part is big enough,
+  // so it bolts straight onto a strip. `solid` is the radius of solid material around the centre.
+  const turning = (b: Bore, solid: number, cx = 0): Feature[] => {
+    const fs: Feature[] = [b === 'axle' ? { a: [cx, 0], b: [cx, 0], type: 'm3', d: AXLE_D, axle: true } : hole(cx, 0, 0, false)]
+    if (solid - p >= mMax) for (const [dx, dy] of [[1, 0], [0, 1], [-1, 0], [0, -1]]) fs.push(hole(cx + dx * p, dy * p, 1, true))
+    return fs
+  }
+  // Discs in a row, each [outer radius, solid radius], with a bore (and grid holes where they fit) in each.
+  const stack = (discs: [number, number][], b: Bore, lbl: string, shape?: (i: number, x: number) => Pt[] | undefined): Geo => {
+    const out: Geo = { features: [], outer: [], inner: [], corner: 0, label: lbl }
+    let x = 0
+    discs.forEach(([R, solid], i) => {
+      const cx = x + R
+      out.features.push(...turning(b, solid, cx))
+      out.outer.push(shape?.(i, cx) ?? circle([cx, 0], R + g))
+      out.corner = Math.max(out.corner, R)
+      x += 2 * R + GAP
+    })
+    return out
   }
 
   switch (part.type) {
@@ -420,6 +453,30 @@ function build(part: GridPart, ctx: Ctx, g: number): Geo {
       const m = half(fs)
       return { features: fs, inner: [], corner: m, label: 'A8', outer: [roundedBox(0, 0, xr + (part.cols127 - 1) * P2, H, m + g)] }
     }
+    case 'gear': {
+      const { rf, ra } = gearRadii(part.teeth, part.module)
+      return { features: turning(part.bore, rf), outer: [gearOutline(part.teeth, part.module, g)], inner: [], corner: ra, label: `Z${part.teeth}` }
+    }
+    case 'rack': {
+      // A strip with teeth along its top edge; same module as a gear means they mesh.
+      const n = part.holes, fs = grid(n, 1, () => true), m = half(fs)
+      return {
+        features: fs, inner: [], corner: 0, label: `M${+part.module.toFixed(1)}`,
+        outer: [rackOutline(-m, (n - 1) * p + m, m, -m, part.module, g)],
+      }
+    }
+    case 'wheel': {
+      // A sheet cannot hold an edge groove, so the wheel is a stack: flange, core, flange.
+      // The flanges stand proud of the core by the groove depth, which seats an O-ring or rubber band.
+      const R = part.diameter / 2, Rf = R + part.groove
+      return stack([[Rf, Rf], [R, R], [Rf, Rf]], part.bore, `W${Math.round(part.diameter)}`)
+    }
+    case 'pulley': {
+      // GT2 pulley stack: toothed cores as thick as the 6 mm belt, plus a flange either side.
+      const R = pulleyRadius(part.teeth), cores = Math.max(1, Math.ceil(GT2.beltWidth / t - 1e-9))
+      const pieces: [number, number][] = [[R + 2, R + 2], ...Array.from({ length: cores }, (): [number, number] => [R, R - GT2.depth]), [R + 2, R + 2]]
+      return stack(pieces, part.bore, '', (i, x) => (i === 0 || i === pieces.length - 1 ? undefined : pulleyOutline(part.teeth, g).map(([px, py]) => [px + x, py] as Pt)))
+    }
     case 'curved': {
       // Holes on the centre arc one pitch apart as a straight line (chord), so they bolt to straight parts.
       const R = part.radius * p
@@ -465,6 +522,7 @@ export function generate(part: Part, ctx: Ctx): Path[] {
   const geo = placed(q, ctx, kerf / 2)
   const paths: Path[] = geo.features.map((f): Path => {
     const r = holeRadius(f.d ?? HOLES[f.type].d, ctx.fit, kerf)
+    if (f.axle) return { op: 'inner', shape: { kind: 'poly', pts: axleCross(f.a[0], f.a[1], FIT_OFFSET[ctx.fit], kerf / 2) } }
     return f.a[0] === f.b[0] && f.a[1] === f.b[1]
       ? { op: 'inner', shape: { kind: 'circle', cx: f.a[0], cy: f.a[1], r } }
       : { op: 'inner', shape: { kind: 'poly', pts: stadium(f.a, f.b, r) } }
@@ -482,7 +540,7 @@ const LABEL_CLEAR = 0.8 // gap between text and hole edge, mm, so the label neve
 // Engraved between the first two side-by-side holes one pitch apart, shrunk to fit. Skipped below 1 mm.
 function label(geo: Geo, ctx: Ctx): Path[] {
   const p = ctx.profile.pitch
-  const holes = geo.features.filter((f) => f.a[0] === f.b[0] && f.a[1] === f.b[1])
+  const holes = geo.features.filter((f) => !f.axle && f.a[0] === f.b[0] && f.a[1] === f.b[1])
   if (!geo.label) return []
   for (const a of holes) {
     const b = holes.find((h) => Math.abs(h.a[1] - a.a[1]) < 1e-6 && Math.abs(h.a[0] - a.a[0] - p) < 1e-6)
@@ -534,6 +592,7 @@ export type Measure = {
   holeSpan: Span | null; edgeSpan: Span | null // where the smallest webs are, for drawing failures
   corner: number // outline corner radius, for the selection ring
   own: number[] // nominal diameters of holes that set their own size (component patterns, bores)
+  axle: boolean // has a Technic axle cross
 }
 
 // Webs are measured on holes as cut (nominal + fit); kerf correction cancels out after cutting.
@@ -586,7 +645,8 @@ export function measure(part: GridPart, ctx: Ctx): Measure {
   for (const poly of geo.outer) for (const [x, y] of poly) { w = Math.max(w, x); h = Math.max(h, y) }
   return { w, h, holeWeb, edgeWeb, holeSpan, edgeSpan, corner: geo.corner,
     types: [...new Set(geo.features.filter((f) => f.d === undefined).map((f) => f.type))],
-    own: [...new Set(geo.features.flatMap((f) => (f.d === undefined ? [] : [f.d])))].sort((a, b) => a - b),
+    own: [...new Set(geo.features.flatMap((f) => (f.d === undefined || f.axle ? [] : [f.d])))].sort((a, b) => a - b),
+    axle: geo.features.some((f) => f.axle),
   }
 }
 

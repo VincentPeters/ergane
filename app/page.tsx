@@ -20,6 +20,7 @@ type Kind = Part['type']
 type ShapeKind = Exclude<Kind, 'coupon'>
 type Value = number | string
 type Field = { key: string; label: string; hint?: string; step?: number; options?: [Value, string][] }
+const BORE: Field = { key: 'bore', label: 'Centre', options: [['hole', 'Bolt hole'], ['axle', 'Technic axle']] }
 
 // One description per shape drives the library, the parameter form and the defaults.
 // The core clamps every value, so the form only collects what was typed.
@@ -65,8 +66,16 @@ const SHAPES: Record<ShapeKind, { name: string; group: string; defaults: Record<
   adapter: { name: 'Adapter 8 / 12.7', group: 'Mounting', defaults: { cols8: 4, cols127: 3, rows: 4 }, fields: [
     { key: 'cols8', label: '8 mm columns', hint: 'holes' }, { key: 'cols127', label: '12.7 mm columns', hint: 'holes' },
     { key: 'rows', label: 'Rows', hint: '8 mm holes' }] },
+  gear: { name: 'Spur gear', group: 'Motion', defaults: { teeth: 20, module: 2, bore: 'hole' }, fields: [
+    { key: 'teeth', label: 'Teeth', hint: '8–120' }, { key: 'module', label: 'Module', hint: 'mm' }, BORE] },
+  rack: { name: 'Rack', group: 'Motion', defaults: { holes: 11, module: 2 }, fields: [
+    { key: 'holes', label: 'Holes', hint: '3–50' }, { key: 'module', label: 'Module', hint: 'mm, as the gear' }] },
+  wheel: { name: 'Wheel', group: 'Motion', defaults: { diameter: 60, groove: 2.5, bore: 'hole' }, fields: [
+    { key: 'diameter', label: 'Diameter', hint: 'mm' }, { key: 'groove', label: 'Tyre groove', hint: 'mm deep' }, BORE] },
+  pulley: { name: 'GT2 pulley', group: 'Motion', defaults: { teeth: 20, bore: 'hole' }, fields: [
+    { key: 'teeth', label: 'Teeth', hint: '12–80' }, BORE] },
 }
-const GROUPS = ['Structural', 'Round', 'Connectors', 'Joints', 'Mounting']
+const GROUPS = ['Structural', 'Round', 'Connectors', 'Joints', 'Mounting', 'Motion']
 const LIBRARY: { group: string; items: { kind: Kind; name: string }[] }[] = [
   ...GROUPS.map((group) => ({
     group,
@@ -93,6 +102,10 @@ function describe(p: GridPart, holes: number, pitch: number): [string, string] {
     case 'nutjoint': return [`Captive nut joint, ${p.bolt} mm bolt`, `nutjoint-${p.cols}-${p.bolt}`]
     case 'mount': return [`Mounting plate, ${p.component.name}`, `mount-${p.component.id}`]
     case 'adapter': return ['Adapter plate, 8 / 12.7 mm', `adapter-${p.cols8}-${p.cols127}-${p.rows}`]
+    case 'gear': return [`Spur gear, ${p.teeth} teeth, module ${+p.module.toFixed(2)}`, `gear-z${p.teeth}-m${+p.module.toFixed(2)}`]
+    case 'rack': return [`Rack, ${p.holes} holes, module ${+p.module.toFixed(2)}`, `rack-${p.holes}-m${+p.module.toFixed(2)}`]
+    case 'wheel': return [`Wheel ø ${+p.diameter.toFixed(1)} mm`, `wheel-${Math.round(p.diameter)}`]
+    case 'pulley': return [`GT2 pulley, ${p.teeth} teeth`, `pulley-gt2-${p.teeth}`]
   }
 }
 
@@ -222,7 +235,7 @@ export default function Page() {
   const nominal = m ?? { w: outer.w - kerf, h: outer.h - kerf }
   const holeCount = paths.filter((p) => p.shape.kind === 'circle').length
   const [title, file] = part.type === 'coupon' ? ['Calibration coupon', `coupon-${materialId}`] : describe(part, holeCount, profile.pitch)
-  const elongated = part.type === 'strip' || part.type === 'slotted'
+  const elongated = part.type === 'strip' || part.type === 'slotted' || part.type === 'rack'
 
   const exportCurrent = () => deliver(file, exportPart(file, paths, format, machine), format)
   const editLine = (part: GridPart) => {
@@ -291,7 +304,7 @@ export default function Page() {
             </ul>
           </section>
         ))}
-        <p className="soon">Gears, wheels and pulleys follow in the next milestone.</p>
+        <p className="soon">Every part bolts to every other on the same grid.</p>
       </nav>
 
       <main className="stage">
@@ -371,6 +384,7 @@ export default function Page() {
                 [elongated ? 'Width' : 'Height', m!.h, false],
                 ...m!.types.map((t) => [`Hole ø ${HOLES[t].name}`, HOLES[t].d + FIT_OFFSET[fit], false] as const),
                 ...m!.own.map((d) => [`Hole ø ${d.toFixed(2)} part`, d + FIT_OFFSET[fit], false] as const),
+                ...(m!.axle ? [['Axle cross', 4.8 + FIT_OFFSET[fit], false] as const] : []),
                 ['Edge web', m!.edgeWeb, issues.some((i) => i.rule === 'edge-web')],
                 ['Hole web', m!.holeWeb, issues.some((i) => i.rule === 'hole-web')],
                 ...(part.type === 'box' || part.type === 'bracket' || part.type === 'nutjoint' ? [['Finger depth', base.thickness, false] as const] : []),
