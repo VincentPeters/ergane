@@ -2,14 +2,15 @@
 // Kit files and share links are untrusted input: parseKit rebuilds every field through the core's clamps.
 import { COMPONENTS } from './components'
 import {
-  MATERIALS, PROFILES, clampPart, defaultMix, generate, type Ctx, type Fit, type GridPart, type HoleMix, type Part,
+  MATERIALS, PROFILES, clampPart, defaultMix, generate, sanitizeMaterial, sanitizeProfile,
+  type Ctx, type Fit, type GridPart, type HoleMix, type Material, type Part, type Profile,
 } from './geometry'
 
 const BUDGET_CTX: Ctx = { profile: PROFILES[0], material: MATERIALS[0], fit: 'normal' }
 import { SHEET_PRESETS, type Sheet } from './layout'
 
 export type KitItem = { part: GridPart; qty: number }
-export type Kit = { name: string; profile: string; holeMix: HoleMix; material: string; fit: Fit; sheet: Sheet; items: KitItem[] }
+export type Kit = { name: string; profile: Profile; holeMix: HoleMix; material: Material; fit: Fit; sheet: Sheet; items: KitItem[] }
 
 // The fields each part type may carry. Anything else in an imported kit is dropped, so no stray text
 // reaches the parts list or the saved kit.
@@ -30,7 +31,7 @@ const MIXES: HoleMix[] = ['all-m3', 'all-technic', 'alternating', 'border-techni
 const FITS: Fit[] = ['loose', 'normal', 'tight']
 
 export const emptyKit = (name = 'My kit'): Kit => ({
-  name, profile: PROFILES[0].id, holeMix: 'all-m3', material: MATERIALS[0].id, fit: 'normal',
+  name, profile: PROFILES[0], holeMix: 'all-m3', material: MATERIALS[0], fit: 'normal',
   sheet: { w: SHEET_PRESETS[1][0], h: SHEET_PRESETS[1][1], spacing: 2 }, items: [],
 })
 
@@ -58,13 +59,12 @@ const num = (v: unknown, lo: number, hi: number, dflt: number) => {
 
 /** The kit as spec-12 JSON: ids plus the values they stood for, parts flattened with their quantity. */
 export function kitToJSON(kit: Kit): string {
-  const profile = PROFILES.find((p) => p.id === kit.profile)!
-  const material = MATERIALS.find((m) => m.id === kit.material)!
+  const { profile, material } = kit
   return JSON.stringify({
     name: kit.name,
-    profile: { id: profile.id, pitch: profile.pitch, hole: profile.hole },
+    profile: { id: profile.id, pitch: profile.pitch, hole: profile.hole, ...(profile.custom ? { custom: profile.custom } : {}) },
     holeMix: kit.holeMix,
-    material: { id: material.id, thickness: material.thickness, kerf: material.kerf, minWeb: material.minWeb },
+    material: { id: material.id, name: material.name, thickness: material.thickness, kerf: material.kerf, minWeb: material.minWeb },
     fit: kit.fit,
     parts: kit.items.map((it) => ({ ...it.part, qty: it.qty })),
     sheet: { width: kit.sheet.w, height: kit.sheet.h, spacing: kit.sheet.spacing },
@@ -78,7 +78,7 @@ export function parseKit(json: string): Kit | string {
   if (!raw || typeof raw !== 'object' || !Array.isArray(raw.parts)) return 'A kit needs a "parts" list.'
   if (raw.parts.length > 300) return 'A kit can hold at most 300 part lines.'
   const id = (v: unknown) => (v && typeof v === 'object' ? (v as { id?: unknown }).id : v)
-  const profile = PROFILES.find((p) => p.id === id(raw.profile)) ?? PROFILES[0]
+  const profile = sanitizeProfile(raw.profile)
   const sheet = (raw.sheet ?? {}) as Record<string, unknown>
   const items: KitItem[] = []
   let pieces = 0, paths = 0
@@ -95,9 +95,9 @@ export function parseKit(json: string): Kit | string {
   }
   return {
     name: typeof raw.name === 'string' && raw.name.trim() ? raw.name.trim().slice(0, 60) : 'Imported kit',
-    profile: profile.id,
+    profile,
     holeMix: MIXES.includes(raw.holeMix as HoleMix) ? (raw.holeMix as HoleMix) : defaultMix(profile),
-    material: (MATERIALS.find((m) => m.id === id(raw.material)) ?? MATERIALS[0]).id,
+    material: sanitizeMaterial(raw.material),
     fit: FITS.includes(raw.fit as Fit) ? (raw.fit as Fit) : 'normal',
     sheet: { w: num(sheet.width, 50, 2000, 600), h: num(sheet.height, 50, 2000, 300), spacing: num(sheet.spacing, 0, 20, 2) },
     items,

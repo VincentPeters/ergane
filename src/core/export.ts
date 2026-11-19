@@ -70,8 +70,7 @@ export function exportPart(name: string, paths: Path[], format: Format, machine:
 
 /** The context a kit cuts with on this machine: the kit's material with the kerf calibrated here. */
 export function kitCtx(kit: Kit, kerf: number): Ctx {
-  const material = MATERIALS.find((m) => m.id === kit.material) ?? MATERIALS[0]
-  return { profile: PROFILES.find((p) => p.id === kit.profile) ?? PROFILES[0], material: { ...material, kerf }, fit: kit.fit, holeMix: kit.holeMix }
+  return { profile: kit.profile, material: { ...kit.material, kerf }, fit: kit.fit, holeMix: kit.holeMix, sheet: kit.sheet }
 }
 
 export type KitCheck = { line: number; issues: Issue[] }[]

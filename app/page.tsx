@@ -8,11 +8,12 @@ import { zip } from '../src/core/zip'
 import { DecimalInput, Num } from './inputs'
 import { KitDrawer } from './KitDrawer'
 import {
-  download, kerfKey, loadComponents, loadKerfs, loadKit, loadKits, loadMachines, saveComponents, saveKerfs, saveKit, saveKits, saveMachines,
+  download, kerfKey, loadComponents, loadCustomProfile, loadKerfs, loadPressFits, savePressFits, loadKit, loadKits, loadMachines, loadMaterials,
+  saveComponents, saveCustomProfile, saveKerfs, saveKit, saveKits, saveMachines, saveMaterials,
 } from './storage'
 import {
-  ANGLES, FIT_OFFSET, HOLES, MATERIALS, PROFILES, RULE_COUNT, bbox, clampPart, couponKerfs, defaultMix, generate, measure, minWebFor, validate,
-  type Ctx, type Fit, type GridPart, type HoleMix, type Part,
+  ANGLES, FIT_OFFSET, HOLES, MATERIALS, PRESS_FIT, PROFILES, RULE_COUNT, bbox, clampPart, couponKerfs, couponPressFits, defaultMix, generate, measure, minWebFor, validate,
+  holeSpec, sanitizeProfile, type Ctx, type Fit, type GridPart, type HoleMix, type Material, type Part, type Profile,
 } from '../src/core/geometry'
 import { Chart, OwlMark, type Fault } from './Chart'
 
@@ -158,6 +159,8 @@ export default function Page() {
   const [laser, setLaser] = useState(false)
   const [zoom, setZoom] = useState<'fit' | 'true'>('fit')
   const [best, setBest] = useState<number | null>(null)
+  const [bestFit, setBestFit] = useState<number | null>(null)
+  const [pressFits, setPressFits] = useState<Record<string, number>>({})
 
   const [custom, setCustom] = useState<ComponentDef[]>([])
   const [importMsg, setImportMsg] = useState('')
@@ -169,14 +172,26 @@ export default function Page() {
   const [drawer, setDrawer] = useState(false)
   const [notice, setNotice] = useState('')
 
+  const [customProfile, setCustomProfileState] = useState<Profile>(() => PROFILES.find((p) => p.id === 'CUSTOM')!)
+  const [userMaterials, setUserMaterialsState] = useState<Material[]>([])
+  const setCustomProfile = (p: Profile) => { const s = sanitizeProfile(p); setCustomProfileState(s); saveCustomProfile(s) }
+  const setUserMaterials = (list: Material[]) => { setUserMaterialsState(list); saveMaterials(list) }
+  const materials = [...MATERIALS, ...userMaterials.filter((u) => !MATERIALS.some((m) => m.id === u.id))]
+  const profile = profileId === 'CUSTOM' ? customProfile : PROFILES.find((p) => p.id === profileId) ?? PROFILES[0]
+  const base = materials.find((m) => m.id === materialId) ?? MATERIALS[0]
+
   const setKit = (k: Kit) => { setKitState(k); saveKit(k) }
-  // The kit follows the settings in the top bar; loading a kit sets the top bar to the kit's settings.
+  // The kit follows the settings in the top bar; loading a kit sets the top bar to the kit's settings,
+  // adding its custom grid or material here when this browser has not seen them.
   const adoptKit = (k: Kit) => {
-    setProfileId(k.profile); setMix(k.holeMix); setMaterialId(k.material); setFit(k.fit)
+    if (k.profile.id === 'CUSTOM') setCustomProfile(k.profile)
+    if (!materials.some((m) => m.id === k.material.id)) setUserMaterials([...userMaterials, k.material])
+    setProfileId(k.profile.id); setMix(k.holeMix); setMaterialId(k.material.id); setFit(k.fit)
     setKit(k)
   }
   useEffect(() => {
-    setKerfs(loadKerfs()); setCustom(loadComponents()); setMachines(loadMachines()); setSavedKits(loadKits())
+    setKerfs(loadKerfs()); setPressFits(loadPressFits()); setCustom(loadComponents()); setMachines(loadMachines()); setSavedKits(loadKits())
+    setCustomProfileState(loadCustomProfile()); setUserMaterialsState(loadMaterials())
     const stored = loadKit()
     if (stored) adoptKit(stored)
     // A share link carries the kit in the URL fragment, which never reaches a server.
@@ -188,10 +203,11 @@ export default function Page() {
       })
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  const settings = JSON.stringify([profile, mix, base, fit])
   useEffect(() => {
-    if (kit.profile !== profileId || kit.holeMix !== mix || kit.material !== materialId || kit.fit !== fit)
-      setKit({ ...kit, profile: profileId, holeMix: mix, material: materialId, fit })
-  }, [profileId, mix, materialId, fit]) // eslint-disable-line react-hooks/exhaustive-deps
+    if (JSON.stringify([kit.profile, kit.holeMix, kit.material, kit.fit]) !== settings)
+      setKit({ ...kit, profile, holeMix: mix, material: base, fit })
+  }, [settings]) // eslint-disable-line react-hooks/exhaustive-deps
   const machine = machines.find((x) => x.id === machineId) ?? DEFAULT_MACHINE
   const library = [...COMPONENTS, ...custom.filter((c) => !COMPONENTS.some((b) => b.id === c.id))]
   const importComponents = async (file: File) => {
@@ -203,8 +219,6 @@ export default function Page() {
     setImportMsg(`Added ${parsed.length} component${parsed.length === 1 ? '' : 's'}.`)
   }
 
-  const profile = PROFILES.find((p) => p.id === profileId)!
-  const base = MATERIALS.find((m) => m.id === materialId)!
   const kk = kerfKey(machine.id, materialId)
   const calibrated = kk in kerfs
   const kerf = kerfs[kk] ?? base.kerf
@@ -219,7 +233,9 @@ export default function Page() {
     : kind === 'mount' ? clampPart({ type: 'mount', component: resolveComponent(library, params.mount), border: Number(params.mount.border), label })
     : clampPart({ type: kind, ...params[kind], label } as Part)
   const setParam = (key: string, v: Value) => kind !== 'coupon' && setParams({ ...params, [kind]: { ...params[kind], [key]: v } })
-  const ctx: Ctx = { profile, material: { ...base, kerf }, fit, holeMix: mix, sheet: kit.sheet }
+  const pressFit = pressFits[kk] ?? PRESS_FIT
+  const setPressFit = (v: number) => { const next = { ...pressFits, [kk]: v }; setPressFits(next); savePressFits(next) }
+  const ctx: Ctx = { profile, material: { ...base, kerf }, fit, holeMix: mix, sheet: kit.sheet, pressFit }
 
   const key = JSON.stringify([part, ctx])
   const paths = useMemo(() => generate(part, ctx), [key])
@@ -260,7 +276,7 @@ export default function Page() {
         </label>
         <label className="f">Material
           <select value={materialId} onChange={(e) => { setMaterialId(e.target.value); setBest(null) }}>
-            {MATERIALS.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+            {materials.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
           </select>
         </label>
         <label className="f">Kerf
@@ -328,10 +344,19 @@ export default function Page() {
       <aside className="form" aria-label="Parameters">
         {part.type === 'coupon' ? (
           <Coupon kerf={kerf} best={best} setBest={setBest} material={base.name}
-            rows={profile.mixable ? 'M3 and Technic rows' : `${HOLES[profile.hole].name} row`}
-            onUse={(k) => { setKerf(k); setBest(null) }} />
+            rows={profile.mixable ? 'M3 and Technic rows' : `${holeSpec(profile, profile.hole).name} row`}
+            onUse={(k) => { setKerf(k); setBest(null) }}
+            pressFit={pressFit} bestFit={bestFit} setBestFit={setBestFit} onUseFit={(v) => { setPressFit(v); setBestFit(null) }} />
         ) : (
           <>
+            {profile.id === 'CUSTOM' && (
+              <>
+                <h2 className="it">Custom grid</h2>
+                <Num label="Pitch" hint="mm" value={profile.pitch} onChange={(v) => setCustomProfile({ ...profile, pitch: v })} />
+                <Num label="Hole ø" hint="mm" value={profile.custom!.d} onChange={(v) => setCustomProfile({ ...profile, custom: { ...profile.custom!, d: v } })} />
+                <Num label="Strip width" hint="mm" value={profile.custom!.width} onChange={(v) => setCustomProfile({ ...profile, custom: { ...profile.custom!, width: v } })} />
+              </>
+            )}
             <h2 className="it">Parameters</h2>
             {part.type === 'mount' && (
               <>
@@ -382,12 +407,13 @@ export default function Page() {
               {[
                 [elongated ? 'Length' : 'Width', m!.w, false],
                 [elongated ? 'Width' : 'Height', m!.h, false],
-                ...m!.types.map((t) => [`Hole ø ${HOLES[t].name}`, HOLES[t].d + FIT_OFFSET[fit], false] as const),
+                ...m!.types.map((t) => [`Hole ø ${holeSpec(profile, t).name}`, holeSpec(profile, t).d + FIT_OFFSET[fit], false] as const),
                 ...m!.own.map((d) => [`Hole ø ${d.toFixed(2)} part`, d + FIT_OFFSET[fit], false] as const),
                 ...(m!.axle ? [['Axle cross', 4.8 + FIT_OFFSET[fit], false] as const] : []),
                 ['Edge web', m!.edgeWeb, issues.some((i) => i.rule === 'edge-web')],
                 ['Hole web', m!.holeWeb, issues.some((i) => i.rule === 'hole-web')],
                 ...(part.type === 'box' || part.type === 'bracket' || part.type === 'nutjoint' ? [['Finger depth', base.thickness, false] as const] : []),
+                ...(part.type === 'nutjoint' ? [['Press fit', pressFit, false] as const] : []),
                 [`Min web, ${minWebFor(part, ctx) < base.minWeb ? 'this part' : base.name}`, minWebFor(part, ctx), false],
               ].map(([k, v, bad]) => (
                 <div key={k as string} className={bad ? 'bad' : ''}><dt>{k}</dt><dd>{mm(v as number)}<u>mm</u></dd></div>
@@ -417,6 +443,7 @@ export default function Page() {
         saved={savedKits} setSaved={(k) => { setSavedKits(k); saveKits(k) }}
         ctx={ctx} format={format} machine={machine}
         machines={machines} setMachines={(list) => { setMachines(list); saveMachines(list) }} selectMachine={setMachineId}
+        material={base} userMaterials={userMaterials} setUserMaterials={setUserMaterials} selectMaterial={setMaterialId}
         onEdit={editLine} deliver={deliver} notice={notice} setNotice={setNotice}
         describe={(p) => describe(p, generate(p, ctx).filter((x) => x.shape.kind === 'circle').length, profile.pitch)[0]} />
     </div>
@@ -432,8 +459,10 @@ function KerfInput({ value, onCommit }: { value: number; onCommit: (v: number) =
 
 function Coupon(props: {
   kerf: number; best: number | null; setBest: (k: number) => void; onUse: (k: number) => void; material: string; rows: string
+  pressFit: number; bestFit: number | null; setBestFit: (v: number) => void; onUseFit: (v: number) => void
 }) {
   const options = couponKerfs(props.kerf)
+  const fits = couponPressFits(props.pressFit)
   return (
     <>
       <h2 className="it">Calibrate kerf</h2>
@@ -452,6 +481,18 @@ function Coupon(props: {
         {props.best === null ? 'Pick a label first' : `Use ${props.best.toFixed(2)} mm as kerf`}
       </button>
       <p className="note-text">Labels are centred on the current kerf, {props.kerf.toFixed(2)} mm. The result is saved in this browser for {props.material}.</p>
+
+      <h2 className="it">Press fit for tab slots</h2>
+      <p className="note-text">Push an offcut of the same sheet into each slot of the FIT row. Pick the label of the slot it enters snugly by hand.</p>
+      <div className="labels five" role="radiogroup" aria-label="Best-fitting slot label">
+        {fits.map((v) => (
+          <button key={v} role="radio" aria-checked={props.bestFit === v} onClick={() => props.setBestFit(v)}>{v.toFixed(2)}</button>
+        ))}
+      </div>
+      <button className="ghost wide" disabled={props.bestFit === null} onClick={() => props.bestFit !== null && props.onUseFit(props.bestFit)}>
+        {props.bestFit === null ? 'Pick a slot label first' : `Use ${props.bestFit.toFixed(2)} mm as press fit`}
+      </button>
+      <p className="note-text">Current press fit {props.pressFit.toFixed(2)} mm, used by tab slots in joints.</p>
     </>
   )
 }

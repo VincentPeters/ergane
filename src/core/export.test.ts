@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { toDXF } from './dxf'
 import { DEFAULT_MACHINE, exportKit, exportPart, kitCtx, layoutKit, partsCSV, sanitizeMachine } from './export'
-import { MATERIALS, PROFILES, bbox, generate, validate, type Ctx } from './geometry'
+import { MATERIALS, PROFILES, bbox, generate, sanitizeMaterial, sanitizeProfile, validate, type Ctx } from './geometry'
 import { decodeKit, emptyKit, encodeKit, kitToJSON, parseKit, starterKit } from './kit'
 import { pack } from './layout'
 import { toPDF } from './pdf'
@@ -26,7 +26,7 @@ describe('kits', () => {
     if (typeof k === 'string') throw new Error(k)
     expect(k.items).toHaveLength(1)
     expect(k.items[0]).toMatchObject({ part: { holes: 50 }, qty: 500 })
-    expect(k.material).toBe(MATERIALS[0].id)
+    expect(k.material).toEqual(MATERIALS[0])
     expect(k.fit).toBe('normal')
     expect(k.sheet.w).toBe(50)
     expect(parseKit('{')).toMatch(/not valid JSON/)
@@ -175,5 +175,28 @@ describe('machine profiles', () => {
   it('keeps an empty kit exportable', () => {
     const kit = emptyKit()
     expect(exportKit(kit, kitCtx(kit, 0.2), 'pdf', DEFAULT_MACHINE, kitToJSON(kit)).sheets).toBe(0)
+  })
+})
+
+describe('custom grid and material presets', () => {
+  it('builds parts on a CUSTOM grid with its own hole and strip width', () => {
+    const custom = sanitizeProfile({ id: 'CUSTOM', pitch: 10, custom: { d: 4, width: 10 } })
+    const c: Ctx = { profile: custom, material: { ...MATERIALS[0], kerf: 0 }, fit: 'normal' }
+    const paths = generate({ type: 'strip', holes: 5, rows: 1 }, c)
+    const b = bbox(paths)
+    expect(b.w).toBeCloseTo(4 * 10 + 10, 3)
+    expect(b.h).toBeCloseTo(10, 3)
+    expect(paths.find((p) => p.shape.kind === 'circle')!.shape).toMatchObject({ r: 2 })
+    expect(sanitizeProfile({ id: 'CUSTOM', pitch: 999, custom: { d: 6, width: 2 } })).toMatchObject({ pitch: 50, custom: { d: 6, width: 7 } })
+  })
+
+  it('carries a custom grid and material in the kit file', () => {
+    const kit = {
+      ...emptyKit('Custom'),
+      profile: sanitizeProfile({ id: 'CUSTOM', pitch: 10, custom: { d: 4, width: 10 } }),
+      material: sanitizeMaterial({ id: 'birch-4', name: 'Birch 4 mm', thickness: 4, kerf: 0.12, minWeb: 2.5 }),
+      items: [{ part: { type: 'strip', holes: 5, rows: 1, label: false } as const, qty: 2 }],
+    }
+    expect(parseKit(kitToJSON(kit))).toEqual(kit)
   })
 })

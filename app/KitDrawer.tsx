@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { checkKit, exportKit, partId, sanitizeMachine, type Format, type Machine, type OutFile } from '../src/core/export'
-import type { Ctx, GridPart } from '../src/core/geometry'
+import { MATERIALS, sanitizeMaterial, type Ctx, type GridPart, type Material } from '../src/core/geometry'
 import { emptyKit, encodeKit, kitToJSON, parseKit, starterKit, type Kit } from '../src/core/kit'
 import { SHEET_PRESETS } from '../src/core/layout'
 import { toSVG } from '../src/core/svg'
@@ -14,6 +14,7 @@ type Props = {
   saved: Kit[]; setSaved: (k: Kit[]) => void
   ctx: Ctx; format: Format; machine: Machine
   machines: Machine[]; setMachines: (m: Machine[]) => void; selectMachine: (id: string) => void
+  material: Material; userMaterials: Material[]; setUserMaterials: (m: Material[]) => void; selectMaterial: (id: string) => void
   onEdit: (part: GridPart) => void
   deliver: (base: string, files: OutFile[], format: Format) => void
   notice: string; setNotice: (s: string) => void
@@ -147,6 +148,7 @@ export function KitDrawer(p: Props) {
                 <button className="link" onClick={() => { p.setSaved(p.saved.filter((_, i) => i !== Math.min(savedIdx, p.saved.length - 1))); setSavedIdx(0) }}>Delete</button>
               </div>
             )}
+            <MaterialEditor material={p.material} user={p.userMaterials} setUser={p.setUserMaterials} select={p.selectMaterial} notice={p.setNotice} />
             <MachineEditor machine={machine} machines={p.machines} setMachines={p.setMachines} select={p.selectMachine} notice={p.setNotice} />
           </div>
         </div>
@@ -199,6 +201,40 @@ function MachineEditor({ machine, machines, setMachines, select, notice }: {
         {machine.id !== 'default' && (
           <button className="link" onClick={() => { setMachines(machines.filter((m) => m.id !== machine.id)); select('default') }}>Delete</button>
         )}
+      </div>
+    </fieldset>
+  )
+}
+
+// User material presets (spec 4): thickness, starting kerf and minimum web. Built-ins stay fixed;
+// saving under a new name adds a preset, which kits carry with them.
+function MaterialEditor({ material, user, setUser, select, notice }: {
+  material: Material; user: Material[]; setUser: (m: Material[]) => void; select: (id: string) => void; notice: (s: string) => void
+}) {
+  const [draft, setDraft] = useState<Material>(material)
+  const [forId, setForId] = useState(material.id)
+  if (forId !== material.id) { setForId(material.id); setDraft(material) }
+  const builtIn = MATERIALS.some((m) => m.id === material.id)
+  const saveAs = () => {
+    const name = draft.name.trim() || 'My material'
+    const slugged = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 30) || 'material'
+    const id = builtIn || name !== material.name ? `${slugged}-${Date.now().toString(36).slice(-4)}` : material.id
+    const clean = sanitizeMaterial({ ...draft, id, name })
+    setUser([...user.filter((m) => m.id !== id), clean]); select(id)
+    notice(`Saved material “${clean.name}”. Calibrate its kerf with the coupon.`)
+  }
+  return (
+    <fieldset className="machine">
+      <legend className="it">Material</legend>
+      <label className="row">Name <input type="text" className="text" value={draft.name} maxLength={40} onChange={(e) => setDraft({ ...draft, name: e.target.value })} /></label>
+      {(['thickness', 'kerf', 'minWeb'] as const).map((k) => (
+        <label key={k} className="row"><span>{{ thickness: 'Thickness', kerf: 'Starting kerf', minWeb: 'Min web' }[k]} <small>mm</small></span>
+          <DecimalInput value={draft[k]} onCommit={(v) => setDraft({ ...draft, [k]: v })} valid={(v) => v >= 0 && v <= 25} />
+        </label>
+      ))}
+      <div className="btns">
+        <button className="ghost" onClick={saveAs}>{builtIn ? 'Save as new material' : 'Save material'}</button>
+        {!builtIn && <button className="link" onClick={() => { setUser(user.filter((m) => m.id !== material.id)); select(MATERIALS[0].id) }}>Delete</button>}
       </div>
     </fieldset>
   )

@@ -270,3 +270,4 @@ input.text {
 .top select { max-width: 170px; }
 .top .brand small { white-space: nowrap; }
 @media (max-width: 1360px) { .top .brand small { display: none; } }
+.labels.five { grid-template-columns: repeat(5, 1fr); }

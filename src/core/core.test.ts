@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  ANGLES, MATERIALS, PRESS_FIT, PROFILES, bbox, clampPart, couponKerfs, generate, measure, validate,
+  ANGLES, MATERIALS, PRESS_FIT, PROFILES, bbox, clampPart, couponKerfs, couponPressFits, generate, measure, validate,
   type Ctx, type GridPart, type Material, type Part, type Path,
 } from './geometry'
 import { COMPONENTS, parseComponents } from './components'
@@ -265,6 +265,14 @@ describe('calibration coupon', () => {
     expect(r.length).toBe(14) // M3 and Technic rows on a GRID8 profile
     expect(r.slice(0, 7)).toEqual([1.575, 1.55, 1.525, 1.5, 1.475, 1.45, 1.425]) // 3.2/2 - k/2, k = 0.05..0.35
     expect(paths.some((p) => p.op === 'engrave')).toBe(true)
+  })
+
+  it('cuts five press-fit slots, each thickness minus its labelled press fit', () => {
+    const slots = generate({ type: 'coupon' }, ctx()).filter((p) => p.op === 'inner' && p.shape.kind === 'poly')
+    expect(slots).toHaveLength(5)
+    const fits = couponPressFits(PRESS_FIT)
+    expect(fits).toEqual([0, 0.05, 0.1, 0.15, 0.2])
+    slots.forEach((s, i) => expect(bbox([s]).h).toBeCloseTo(acrylic.thickness - fits[i] - acrylic.kerf, 6))
   })
 
   it('never offers a negative kerf', () => {

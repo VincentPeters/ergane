@@ -13,20 +13,42 @@ export type Shape =
 export type Path = { op: Op; shape: Shape }
 
 // Nominal hole sizes and the strip width each needs. See spec 3.2 for the 12 mm Technic width.
-export type HoleType = 'm3' | 'technic' | 'meccano'
-export const HOLES: Record<HoleType, { name: string; short: string; d: number; width: number }> = {
+export type HoleType = 'm3' | 'technic' | 'meccano' | 'custom'
+export type HoleSpec = { name: string; short: string; d: number; width: number }
+export const HOLES: Record<HoleType, HoleSpec> = {
   m3: { name: 'M3', short: 'M3', d: 3.2, width: 8 },
   technic: { name: 'Technic', short: 'TEC', d: 4.8, width: 12 },
   meccano: { name: 'Meccano', short: 'MEC', d: 4.1, width: 12.7 },
+  custom: { name: 'Custom', short: 'CUS', d: 3.2, width: 9 }, // defaults; a CUSTOM profile brings its own
 }
 
 // Mixable profiles share the 8 mm grid, so any hole position takes either hole type.
-export type Profile = { id: string; pitch: number; hole: HoleType; mixable: boolean }
+// CUSTOM (spec 3) is free input: its pitch, hole and strip width travel in the profile and the kit file.
+export type Profile = { id: string; pitch: number; hole: HoleType; mixable: boolean; custom?: { d: number; width: number } }
 export const PROFILES: Profile[] = [
   { id: 'GRID8-M3', pitch: 8, hole: 'm3', mixable: true },
   { id: 'GRID8-TECHNIC', pitch: 8, hole: 'technic', mixable: true },
   { id: 'MECCANO', pitch: 12.7, hole: 'meccano', mixable: false },
+  { id: 'CUSTOM', pitch: 10, hole: 'custom', mixable: false, custom: { d: 3.2, width: 9 } },
 ]
+
+/** The hole size and strip width for a hole type under this profile. */
+export const holeSpec = (profile: Profile, t: HoleType): HoleSpec =>
+  t === 'custom' && profile.custom ? { ...HOLES.custom, ...profile.custom } : HOLES[t]
+
+const between = (v: unknown, lo: number, hi: number, dflt: number) => {
+  const n = Number(v)
+  return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : dflt
+}
+/** A profile from a file, link or form: built-ins by id, CUSTOM with clamped values (strip at least 1 mm wider than the hole). */
+export function sanitizeProfile(raw: unknown): Profile {
+  const r = (raw && typeof raw === 'object' ? raw : { id: raw }) as Record<string, unknown>
+  const c = (r.custom ?? r) as Record<string, unknown>
+  const base = PROFILES.find((p) => p.id === r.id) ?? PROFILES[0]
+  if (base.id !== 'CUSTOM') return base
+  const d = between(c.d ?? c.hole, 1, 20, 3.2)
+  return { ...base, pitch: between(r.pitch, 4, 50, 10), custom: { d, width: between(c.width, d + 1, 60, Math.max(9, d + 1)) } }
+}
 
 export type HoleMix = 'all-m3' | 'all-technic' | 'alternating' | 'border-technic'
 export const defaultMix = (p: Profile): HoleMix => (p.hole === 'technic' ? 'all-technic' : 'all-m3')
@@ -38,6 +60,21 @@ export const MATERIALS: Material[] = [
   { id: 'mdf4', name: 'MDF 4 mm', thickness: 4.0, kerf: 0.2, minWeb: 2.5 },
   { id: 'cardboard', name: 'Cardboard', thickness: 3.8, kerf: 0.3, minWeb: 5.0 },
 ]
+
+/** A material from a file, link or form: built-ins by id, user presets (spec 4) with clamped values. */
+export function sanitizeMaterial(raw: unknown): Material {
+  const r = (raw && typeof raw === 'object' ? raw : { id: raw }) as Record<string, unknown>
+  const known = MATERIALS.find((m) => m.id === r.id)
+  if (r.thickness === undefined) return known ?? MATERIALS[0] // an id alone only names a built-in
+  if (typeof r.id !== 'string' || !/^[a-z0-9-]{1,40}$/.test(r.id)) return known ?? MATERIALS[0]
+  const name = typeof r.name === 'string' && r.name.trim() ? r.name.trim().slice(0, 40) : known?.name ?? r.id
+  return {
+    id: r.id, name,
+    thickness: between(r.thickness, 0.5, 25, known?.thickness ?? 3),
+    kerf: between(r.kerf, 0, 1, known?.kerf ?? 0.2),
+    minWeb: between(r.minWeb, 0.5, 20, known?.minWeb ?? 2),
+  }
+}
 
 export type Fit = 'loose' | 'normal' | 'tight'
 export const FIT_OFFSET: Record<Fit, number> = { loose: 0.2, normal: 0, tight: -0.1 }
@@ -72,7 +109,11 @@ export type Bore = 'hole' | 'axle'
 export type Lid = 'closed' | 'open'
 export type GridPart = Exclude<Part, { type: 'coupon' }>
 
-export type Ctx = { profile: Profile; material: Material; fit: Fit; holeMix?: HoleMix; sheet?: { w: number; h: number; spacing: number } }
+export type Ctx = {
+  profile: Profile; material: Material; fit: Fit; holeMix?: HoleMix
+  sheet?: { w: number; h: number; spacing: number }
+  pressFit?: number // calibrated with the coupon's slots; PRESS_FIT until then
+}
 
 // Part parameters arrive from forms, files and URLs; clamp them here so no caller can build a broken part.
 const int = (v: unknown, lo: number, hi: number) => {
@@ -160,10 +201,10 @@ function build(part: GridPart, ctx: Ctx, g: number): Geo {
   }
   const hole = (x: number, y: number, k: number, border = true): Feature => ({ a: [x, y], b: [x, y], type: typeAt(k, border) })
   // The widest hole type in use sets the strip width; the edge margin is half of it.
-  const half = (fs: Feature[]) => Math.max(...fs.map((f) => HOLES[f.type].width)) / 2
+  const half = (fs: Feature[]) => Math.max(...fs.map((f) => holeSpec(ctx.profile, f.type).width)) / 2
   // Positions that do not sit on the grid (rings, arcs) are placed for the widest type the mix can use.
   const mixTypes: HoleType[] = !mix ? [ctx.profile.hole] : mix === 'all-m3' ? ['m3'] : mix === 'all-technic' ? ['technic'] : ['m3', 'technic']
-  const mMax = Math.max(...mixTypes.map((t) => HOLES[t].width)) / 2
+  const mMax = Math.max(...mixTypes.map((t) => holeSpec(ctx.profile, t).width)) / 2
   const grid = (cols: number, rows: number, keep: (i: number, j: number) => boolean) => {
     const fs: Feature[] = []
     for (let j = 0; j < rows; j++)
@@ -367,7 +408,7 @@ function build(part: GridPart, ctx: Ctx, g: number): Geo {
       // B carries the matching press-fit tab slots and the bolt hole. Bolt length sets how deep the T-slot runs.
       const bolt = ctx.profile.hole === 'meccano' ? 'meccano' : 'm3'
       const nut = NUTS[bolt]
-      const d = HOLES[bolt].d + FIT_OFFSET[ctx.fit]
+      const d = holeSpec(ctx.profile, bolt).d + FIT_OFFSET[ctx.fit]
       const m = mMax, cols = part.cols, W = (cols - 1) * p + 2 * m, cx = W / 2
       const slotLen = part.bolt - t + 1 // into A, with 1 mm spare past the bolt tip
       const pocketTop = part.bolt - t - 0.7 // far face of the nut pocket, 0.7 mm short of the bolt tip
@@ -391,7 +432,7 @@ function build(part: GridPart, ctx: Ctx, g: number): Geo {
           if (j === 1 && tabs.some((tx) => Math.abs(x - tx) < p - 0.01)) continue
           fsB.push(j === 1 && Math.abs(x - cx) < 0.01 ? { a: [x, yc], b: [x, yc], type: bolt } : hole(x, yB + m + j * p, i + j, true))
         }
-      const sw = tw + NUT_CLEAR, sh = t - PRESS_FIT
+      const sw = tw + NUT_CLEAR, sh = t - (ctx.pressFit ?? PRESS_FIT)
       const slotsB = tabs.map((x) => rect(x - sw / 2 + g, yc - sh / 2 + g, x + sw / 2 - g, yc + sh / 2 - g))
       return {
         features: [...fsA, ...fsB], outer: [outerA, rect(-g, yB - g, W + g, yB + 2 * p + 2 * m + g)], inner: slotsB,
@@ -410,7 +451,7 @@ function build(part: GridPart, ctx: Ctx, g: number): Geo {
       for (const h of holes) grow(h.x, h.y, h.d / 2, h.d / 2)
       for (const k of c.cutouts ?? []) k.shape === 'circle' ? grow(k.x, k.y, k.d / 2, k.d / 2) : grow(k.x, k.y, k.w / 2, k.h / 2)
       if (c.outline) grow(c.outline.x ?? 0, c.outline.y ?? 0, c.outline.w / 2, c.outline.h / 2)
-      const rb = Math.max(...mixTypes.map((t) => HOLES[t].d)) / 2
+      const rb = Math.max(...mixTypes.map((t) => holeSpec(ctx.profile, t).d)) / 2
       const span = (len: number) => Math.max(2 * b, 2 * b - 1 + Math.ceil((len + 2 * MOUNT_CLEAR + 2 * rb) / p))
       const cols = span(x1 - x0), rows = span(y1 - y0)
       const fs = grid(cols, rows, (i, j) => i < b || j < b || i >= cols - b || j >= rows - b)
@@ -521,7 +562,7 @@ export function generate(part: Part, ctx: Ctx): Path[] {
   const kerf = ctx.material.kerf
   const geo = placed(q, ctx, kerf / 2)
   const paths: Path[] = geo.features.map((f): Path => {
-    const r = holeRadius(f.d ?? HOLES[f.type].d, ctx.fit, kerf)
+    const r = holeRadius(f.d ?? holeSpec(ctx.profile, f.type).d, ctx.fit, kerf)
     if (f.axle) return { op: 'inner', shape: { kind: 'poly', pts: axleCross(f.a[0], f.a[1], FIT_OFFSET[ctx.fit], kerf / 2) } }
     return f.a[0] === f.b[0] && f.a[1] === f.b[1]
       ? { op: 'inner', shape: { kind: 'circle', cx: f.a[0], cy: f.a[1], r } }
@@ -546,7 +587,7 @@ function label(geo: Geo, ctx: Ctx): Path[] {
     const b = holes.find((h) => Math.abs(h.a[1] - a.a[1]) < 1e-6 && Math.abs(h.a[0] - a.a[0] - p) < 1e-6)
     // Both holes must sit on one piece: two spacers one pitch apart have only air between them.
     if (!b || !geo.outer.some((o) => inside([a.a[0] + p / 2, a.a[1]], o))) continue
-    const gap = p - (HOLES[a.type].d + HOLES[b.type].d) / 2 - 2 * LABEL_CLEAR
+    const gap = p - (holeSpec(ctx.profile, a.type).d + holeSpec(ctx.profile, b.type).d) / 2 - 2 * LABEL_CLEAR
     const h = Math.min(LABEL_H, (LABEL_H * gap) / textWidth(geo.label, LABEL_H))
     return h < 1 ? [] : engrave(geo.label, a.a[0] + p / 2, a.a[1], h)
   }
@@ -561,21 +602,37 @@ export function couponKerfs(kerf: number) {
   return [-3, -2, -1, 0, 1, 2, 3].map((n) => +(base + n * COUPON_STEP).toFixed(2))
 }
 
+/** Five press-fit candidates for the coupon's tab slots, centred on the current value, never below 0. */
+export function couponPressFits(pressFit: number) {
+  const base = Math.max(pressFit, 2 * COUPON_STEP)
+  return [-2, -1, 0, 1, 2].map((n) => +(base + n * COUPON_STEP).toFixed(2))
+}
+
 function coupon(ctx: Ctx): Path[] {
   const types: HoleType[] = ctx.profile.mixable ? ['m3', 'technic'] : [ctx.profile.hole]
   const kerfs = couponKerfs(ctx.material.kerf)
   const gutter = 12, col = 11, row = 16, top = 6 // col leaves ~4 mm between 2.2 mm labels
+  const g = ctx.material.kerf / 2
   const paths: Path[] = []
+  // Slot row (spec 7): five tab slots, thickness minus each press-fit candidate, cut with the current kerf.
+  // Push a strip of the same material into each; the label of the snug one is the press fit.
+  const slotY = top + types.length * row, t = ctx.material.thickness
+  paths.push(...engrave('FIT', gutter / 2 + 1, slotY, 2.5))
+  couponPressFits(ctx.pressFit ?? PRESS_FIT).forEach((pf, c) => {
+    const x = gutter + 5 + c * col, hw = 4, hh = (t - pf) / 2
+    paths.push({ op: 'inner', shape: { kind: 'poly', pts: rect(x - hw + g, slotY - hh + g, x + hw - g, slotY + hh - g) } })
+    paths.push(...engrave(pf.toFixed(2), x, slotY + hh + 3.2, 2.2))
+  })
   types.forEach((t, r) => {
     const y = top + r * row
-    paths.push(...engrave(HOLES[t].short, gutter / 2 + 1, y, 2.5))
+    paths.push(...engrave(holeSpec(ctx.profile, t).short, gutter / 2 + 1, y, 2.5))
     kerfs.forEach((k, c) => {
       const x = gutter + 5 + c * col
-      paths.push({ op: 'inner', shape: { kind: 'circle', cx: x, cy: y, r: holeRadius(HOLES[t].d, 'normal', k) } })
+      paths.push({ op: 'inner', shape: { kind: 'circle', cx: x, cy: y, r: holeRadius(holeSpec(ctx.profile, t).d, 'normal', k) } })
       paths.push(...engrave(k.toFixed(2), x, y + 5.5, 2.2))
     })
   })
-  const w = gutter + 5 + 6 * col + 6, h = top + (types.length - 1) * row + 9, r = 3, g = ctx.material.kerf / 2
+  const w = gutter + 5 + 6 * col + 6, h = slotY + t / 2 + 7, r = 3
   paths.push({ op: 'outer', shape: { kind: 'poly', pts: roundedBox(r, r, w - r, h - r, r + g) } })
   return paths
 }
@@ -601,7 +658,7 @@ export function measure(part: GridPart, ctx: Ctx): Measure {
   const geo = placed(clampPart(part) as GridPart, ctx, 0)
   const fs = geo.features
     .map((f) => {
-      const d = (f.d ?? HOLES[f.type].d) + FIT_OFFSET[ctx.fit]
+      const d = (f.d ?? holeSpec(ctx.profile, f.type).d) + FIT_OFFSET[ctx.fit]
       return { ...f, d, x0: Math.min(f.a[0], f.b[0]) - d / 2, x1: Math.max(f.a[0], f.b[0]) + d / 2, y0: Math.min(f.a[1], f.b[1]) - d / 2, y1: Math.max(f.a[1], f.b[1]) + d / 2 }
     })
     .sort((u, v) => u.x0 - v.x0 || u.y0 - v.y0)

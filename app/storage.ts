@@ -2,6 +2,7 @@
 // Every read is re-checked (storage is user-editable) and every access may throw in private modes.
 import { sanitizeComponent, type ComponentDef } from '../src/core/components'
 import { DEFAULT_MACHINE, sanitizeMachine, type Machine } from '../src/core/export'
+import { sanitizeMaterial, sanitizeProfile, type Material, type Profile } from '../src/core/geometry'
 import { kitToJSON, parseKit, type Kit } from '../src/core/kit'
 
 function read<T>(key: string, fallback: T): T {
@@ -49,3 +50,17 @@ export function download(name: string, data: string | Uint8Array, type: string) 
   Object.assign(document.createElement('a'), { href: url, download: name }).click()
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
+
+// The CUSTOM grid profile and user material presets (spec 3 and 4), re-checked through the core on load.
+const PROFILE = 'cutgrid.profile.v1', MATERIALS_KEY = 'cutgrid.materials.v1'
+export const loadCustomProfile = (): Profile => sanitizeProfile({ id: 'CUSTOM', ...read<Record<string, unknown>>(PROFILE, {}) })
+export const saveCustomProfile = (p: Profile) => write(PROFILE, { pitch: p.pitch, custom: p.custom })
+export const loadMaterials = (): Material[] =>
+  read<unknown[]>(MATERIALS_KEY, []).flatMap((m) => { const s = sanitizeMaterial(m); return s.id === (m as { id?: unknown })?.id ? [s] : [] })
+export const saveMaterials = (list: Material[]) => write(MATERIALS_KEY, list)
+
+// Press fit for tab slots, calibrated with the coupon's slot row, per machine and material like kerf.
+const PRESS = 'cutgrid.pressfit.v1'
+export const loadPressFits = (): Record<string, number> =>
+  Object.fromEntries(Object.entries(read<Record<string, unknown>>(PRESS, {})).filter(([, v]) => typeof v === 'number' && v >= 0 && v <= 1)) as Record<string, number>
+export const savePressFits = (p: Record<string, number>) => write(PRESS, p)
