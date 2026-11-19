@@ -26,7 +26,7 @@ npm run check   # typecheck, tests and build: what CI runs
 2. Branch from `main`, keep the change focused, and add a test in `src/core/*.test.ts` for any
    geometry, validation or export logic.
 3. Run `npm run check`. For UI changes, look at the page at desktop width and at 390 px.
-4. Open a pull request. Vercel posts a preview link; CI must pass before merge.
+4. Open a pull request. CI must pass before merge.
 
 Commit messages use the imperative mood and say why, not just what.
 
