@@ -7,8 +7,7 @@ compensates for kerf, checks the webs and exports SVG, DXF or PDF. Kits nest by 
 Live at https://ergane.vinnie.studio (also https://cut-grid.vercel.app).
 Everything runs in the browser: no accounts, no backend, no cookies.
 
-- Spec: [docs/specs.md](docs/specs.md) · Product: [PRODUCT.md](PRODUCT.md) · Design system: [DESIGN.md](DESIGN.md)
-- Launch status: [docs/launch-checklist/checklist.md](docs/launch-checklist/checklist.md)
+- Spec: [docs/specs.md](docs/specs.md) · Design system: [DESIGN.md](DESIGN.md)
 
 ## Develop
 

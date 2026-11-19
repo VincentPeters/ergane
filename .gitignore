@@ -9,3 +9,9 @@ next-env.d.ts
 .vercel
 .env*
 .impeccable/reference/
+
+# Local working notes and tool state, kept out of the public repo
+docs/launch-checklist/
+.impeccable/
+PRODUCT.md
+AGENTS.md

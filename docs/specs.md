@@ -2,7 +2,7 @@
 
 Version 0.3, 19 November 2026. Name: Ergane (working title was Cutgrid; the repository, Vercel project and browser storage keys keep that name).
 
-Decisions in this version: 8 mm Technic grid as the base, M3 as the default fastener, 3 mm acrylic as the default material, Next.js as the framework, machine-neutral export, Vercel hosting, and the Ergane's Atlas visual world (see DESIGN.md). Product truth is recorded in PRODUCT.md. Section 16 lists what v0.3 decided during implementation.
+Decisions in this version: 8 mm Technic grid as the base, M3 as the default fastener, 3 mm acrylic as the default material, Next.js as the framework, machine-neutral export, Vercel hosting, and the Ergane's Atlas visual world (see DESIGN.md). Section 16 lists what v0.3 decided during implementation.
 
 ## 1. Goal
 
