@@ -1,6 +1,7 @@
 // Geometry core. Plain TypeScript, no React: the UI, exporters and a future CLI share it.
 // Units are mm. Coordinates follow SVG: x right, y down, origin at the nominal outline's top-left.
 import { text, textWidth } from './font'
+import { COMPONENTS, componentHoles, sanitizeComponent, type ComponentDef } from './components'
 import { circle, closestSegSeg, difference, inside, rect, roundedBox, roundedConvex, sector, stadium, union, type Pt } from './shapes'
 
 export type Op = 'engrave' | 'inner' | 'outer'
@@ -58,6 +59,8 @@ export type Part =
   | { type: 'bracket'; cols: number; base: number; height: number; label?: boolean }
   | { type: 'box'; cols: number; rows: number; height: number; lid: Lid; label?: boolean }
   | { type: 'nutjoint'; cols: number; rows: number; bolt: number; label?: boolean }
+  | { type: 'mount'; component: ComponentDef; border: number; label?: boolean }
+  | { type: 'adapter'; cols8: number; cols127: number; rows: number; label?: boolean }
   | { type: 'coupon' }
 export type Lid = 'closed' | 'open'
 export type GridPart = Exclude<Part, { type: 'coupon' }>
@@ -106,6 +109,12 @@ export function clampPart(part: Part): Part {
       const cols = int(part.cols, 5, 31)
       return { ...part, cols: cols % 2 ? cols : cols + 1, rows: int(part.rows, 1, 20), bolt: int(part.bolt, 10, 30) }
     }
+    case 'mount': {
+      // The component may come from a shared kit or URL: re-check it, fall back to the first built-in.
+      const c = sanitizeComponent(part.component)
+      return { ...part, component: typeof c === 'string' ? COMPONENTS[0] : c, border: int(part.border, 1, 3) }
+    }
+    case 'adapter': return { ...part, cols8: int(part.cols8, 2, 25), cols127: int(part.cols127, 2, 16), rows: int(part.rows, 2, 25) }
     case 'coupon': return part
   }
 }
@@ -115,16 +124,18 @@ export const PRESS_FIT = 0.1
 // Nut across flats and thickness per bolt size; clearance added to each when cutting the pocket.
 const NUTS = { m3: { af: 5.5, t: 2.4 }, meccano: { af: 7.0, t: 3.2 } }
 const NUT_CLEAR = 0.2
+// Minimum gap between a component's footprint and the border holes of its mounting plate, mm.
+const MOUNT_CLEAR = 3
 
 /** How a panel edge meets its neighbour: plain, fingers at both ends, or notches at both ends. */
 type EdgeKind = 'flat' | 'tabs' | 'slots'
 const GAP = 3 // mm between pieces of a multi-piece part
 const OUT = 1 // mm a notch extends past the edge, so the cut never shares a line with the outline
 
-/** A hole (a equals b) or a slot (a to b), cut at the hole type's diameter. */
-type Feature = { a: Pt; b: Pt; type: HoleType }
+/** A hole (a equals b) or a slot (a to b), cut at the hole type's diameter unless d gives its own. */
+type Feature = { a: Pt; b: Pt; type: HoleType; d?: number }
 /** Outlines and features of a part. Outer rings grow by g, inner cutouts shrink by g. */
-type Geo = { outer: Pt[][]; inner: Pt[][]; features: Feature[]; corner: number; label: string }
+type Geo = { outer: Pt[][]; inner: Pt[][]; features: Feature[]; corner: number; label: string; engrave?: Pt[][] }
 
 function build(part: GridPart, ctx: Ctx, g: number): Geo {
   const p = ctx.profile.pitch
@@ -354,6 +365,61 @@ function build(part: GridPart, ctx: Ctx, g: number): Geo {
         corner: 0, label: `N${part.bolt}`,
       }
     }
+    case 'mount': {
+      // Grid holes on the border, the component pattern centred inside with at least MOUNT_CLEAR mm
+      // between its footprint and the border holes. The plate grows in whole pitches to fit.
+      const c = part.component, b = part.border
+      const holes = componentHoles(c)
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
+      const grow = (x: number, y: number, rx: number, ry: number) => {
+        x0 = Math.min(x0, x - rx); x1 = Math.max(x1, x + rx); y0 = Math.min(y0, y - ry); y1 = Math.max(y1, y + ry)
+      }
+      for (const h of holes) grow(h.x, h.y, h.d / 2, h.d / 2)
+      for (const k of c.cutouts ?? []) k.shape === 'circle' ? grow(k.x, k.y, k.d / 2, k.d / 2) : grow(k.x, k.y, k.w / 2, k.h / 2)
+      if (c.outline) grow(c.outline.x ?? 0, c.outline.y ?? 0, c.outline.w / 2, c.outline.h / 2)
+      const rb = Math.max(...mixTypes.map((t) => HOLES[t].d)) / 2
+      const span = (len: number) => Math.max(2 * b, 2 * b - 1 + Math.ceil((len + 2 * MOUNT_CLEAR + 2 * rb) / p))
+      const cols = span(x1 - x0), rows = span(y1 - y0)
+      const fs = grid(cols, rows, (i, j) => i < b || j < b || i >= cols - b || j >= rows - b)
+      const ox = ((cols - 1) * p) / 2 - (x0 + x1) / 2, oy = ((rows - 1) * p) / 2 - (y0 + y1) / 2
+      for (const h of holes) fs.push({ a: [ox + h.x, oy + h.y], b: [ox + h.x, oy + h.y], type: 'm3', d: h.d })
+      const inner: Pt[][] = []
+      for (const k of c.cutouts ?? []) {
+        if (k.shape === 'circle') fs.push({ a: [ox + k.x, oy + k.y], b: [ox + k.x, oy + k.y], type: 'm3', d: k.d })
+        else inner.push(rect(ox + k.x - k.w / 2 + g, oy + k.y - k.h / 2 + g, ox + k.x + k.w / 2 - g, oy + k.y + k.h / 2 - g))
+      }
+      // The component's footprint is engraved so it is easy to place the right way round.
+      const engrave: Pt[][] = []
+      if (c.outline) {
+        const cx = ox + (c.outline.x ?? 0), cy = oy + (c.outline.y ?? 0), w = c.outline.w / 2, h = c.outline.h / 2
+        engrave.push([[cx - w, cy - h], [cx + w, cy - h], [cx + w, cy + h], [cx - w, cy + h], [cx - w, cy - h]])
+      }
+      const m = half(fs.filter((f) => f.d === undefined))
+      return {
+        features: fs, inner, engrave, corner: m, label: c.short ?? '',
+        outer: [roundedBox(0, 0, (cols - 1) * p, (rows - 1) * p, m + g)],
+      }
+    }
+    case 'adapter': {
+      // 8 mm grid on the left, half-inch Meccano grid on the right, one Meccano pitch between them.
+      const P2 = 12.7
+      const left: HoleType[] = ctx.profile.mixable ? [] : ['m3'] // a Meccano profile still gets M3 on the 8 mm side
+      const H8 = (part.rows - 1) * 8
+      const rows127 = Math.floor(H8 / P2 + 1e-9) + 1, H127 = (rows127 - 1) * P2
+      const H = Math.max(H8, H127)
+      const fs: Feature[] = []
+      for (let j = 0; j < part.rows; j++)
+        for (let i = 0; i < part.cols8; i++)
+          fs.push(left.length ? { a: [i * 8, (H - H8) / 2 + j * 8], b: [i * 8, (H - H8) / 2 + j * 8], type: 'm3' } : hole(i * 8, (H - H8) / 2 + j * 8, i + j))
+      const xr = (part.cols8 - 1) * 8 + P2
+      for (let j = 0; j < rows127; j++)
+        for (let i = 0; i < part.cols127; i++) {
+          const x = xr + i * P2, y = (H - H127) / 2 + j * P2
+          fs.push({ a: [x, y], b: [x, y], type: 'meccano' })
+        }
+      const m = half(fs)
+      return { features: fs, inner: [], corner: m, label: 'A8', outer: [roundedBox(0, 0, xr + (part.cols127 - 1) * P2, H, m + g)] }
+    }
     case 'curved': {
       // Holes on the centre arc one pitch apart as a straight line (chord), so they bolt to straight parts.
       const R = part.radius * p
@@ -379,6 +445,7 @@ function placed(part: GridPart, ctx: Ctx, g: number): Geo {
     outer: geo.outer.map((poly) => poly.map(mv)),
     inner: geo.inner.map((poly) => poly.map(mv)),
     features: geo.features.map((f) => ({ ...f, a: mv(f.a), b: mv(f.b) })),
+    engrave: geo.engrave?.map((line) => line.map(mv)),
   }
 }
 
@@ -397,12 +464,13 @@ export function generate(part: Part, ctx: Ctx): Path[] {
   const kerf = ctx.material.kerf
   const geo = placed(q, ctx, kerf / 2)
   const paths: Path[] = geo.features.map((f): Path => {
-    const r = holeRadius(HOLES[f.type].d, ctx.fit, kerf)
+    const r = holeRadius(f.d ?? HOLES[f.type].d, ctx.fit, kerf)
     return f.a[0] === f.b[0] && f.a[1] === f.b[1]
       ? { op: 'inner', shape: { kind: 'circle', cx: f.a[0], cy: f.a[1], r } }
       : { op: 'inner', shape: { kind: 'poly', pts: stadium(f.a, f.b, r) } }
   })
   for (const pts of geo.inner) paths.push({ op: 'inner', shape: { kind: 'poly', pts } })
+  for (const pts of geo.engrave ?? []) paths.push({ op: 'engrave', shape: { kind: 'line', pts } })
   if (q.label) paths.push(...label(geo, ctx))
   for (const pts of geo.outer) paths.push({ op: 'outer', shape: { kind: 'poly', pts } })
   return paths
@@ -465,6 +533,7 @@ export type Measure = {
   w: number; h: number; holeWeb: number; edgeWeb: number; types: HoleType[]
   holeSpan: Span | null; edgeSpan: Span | null // where the smallest webs are, for drawing failures
   corner: number // outline corner radius, for the selection ring
+  own: number[] // nominal diameters of holes that set their own size (component patterns, bores)
 }
 
 // Webs are measured on holes as cut (nominal + fit); kerf correction cancels out after cutting.
@@ -473,7 +542,7 @@ export function measure(part: GridPart, ctx: Ctx): Measure {
   const geo = placed(clampPart(part) as GridPart, ctx, 0)
   const fs = geo.features
     .map((f) => {
-      const d = HOLES[f.type].d + FIT_OFFSET[ctx.fit]
+      const d = (f.d ?? HOLES[f.type].d) + FIT_OFFSET[ctx.fit]
       return { ...f, d, x0: Math.min(f.a[0], f.b[0]) - d / 2, x1: Math.max(f.a[0], f.b[0]) + d / 2, y0: Math.min(f.a[1], f.b[1]) - d / 2, y1: Math.max(f.a[1], f.b[1]) + d / 2 }
     })
     .sort((u, v) => u.x0 - v.x0 || u.y0 - v.y0)
@@ -515,15 +584,18 @@ export function measure(part: GridPart, ctx: Ctx): Measure {
 
   let w = 0, h = 0
   for (const poly of geo.outer) for (const [x, y] of poly) { w = Math.max(w, x); h = Math.max(h, y) }
-  return { w, h, holeWeb, edgeWeb, holeSpan, edgeSpan, corner: geo.corner, types: [...new Set(geo.features.map((f) => f.type))] }
+  return { w, h, holeWeb, edgeWeb, holeSpan, edgeSpan, corner: geo.corner,
+    types: [...new Set(geo.features.filter((f) => f.d === undefined).map((f) => f.type))],
+    own: [...new Set(geo.features.flatMap((f) => (f.d === undefined ? [] : [f.d])))].sort((a, b) => a - b),
+  }
 }
 
 export function validate(part: Part, ctx: Ctx): Issue[] {
   if (part.type === 'coupon') return []
   const q = clampPart(part) as GridPart
   const { holeWeb, edgeWeb, types } = measure(q, ctx)
-  const min = ctx.material.minWeb
-  const name = ctx.material.name
+  const min = minWebFor(q, ctx)
+  const name = q.type === 'mount' && q.component.minWeb !== undefined && q.component.minWeb < ctx.material.minWeb ? `this ${q.component.name} plate` : ctx.material.name
   // Name the problem, then the changes that fix it for this kind of part.
   const fixes = (extra: (string | false)[]) =>
     [types.includes('technic') && 'switch the hole mix to All M3', ...extra, 'pick a material with a smaller minimum web']
@@ -560,4 +632,10 @@ export function bbox(paths: Path[]) {
     }
   }
   return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }
+}
+
+/** The web the rules require: the material's minimum, relaxed only where a component declares a smaller one. */
+export function minWebFor(part: Part, ctx: Ctx) {
+  const own = part.type === 'mount' ? part.component.minWeb : undefined
+  return own !== undefined ? Math.min(own, ctx.material.minWeb) : ctx.material.minWeb
 }

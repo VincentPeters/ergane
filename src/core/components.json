@@ -1,0 +1,58 @@
+[
+  {
+    "id": "arduino-uno", "name": "Arduino UNO", "short": "UNO", "fastener": "M3",
+    "holes": [
+      { "x": -20.33, "y": 24.11, "d": 3.2 }, { "x": -19.06, "y": -24.15, "d": 3.2 },
+      { "x": 31.74, "y": 19.03, "d": 3.2 }, { "x": 31.74, "y": -8.91, "d": 3.2 }
+    ],
+    "outline": { "w": 68.6, "h": 53.3 }
+  },
+  {
+    "id": "raspberry-pi", "name": "Raspberry Pi 3, 4, 5", "short": "PI", "fastener": "M2.5",
+    "rect": { "w": 58, "h": 49, "d": 2.7 },
+    "outline": { "w": 85, "h": 56, "x": 10, "y": 0 }
+  },
+  {
+    "id": "raspberry-pi-pico", "name": "Raspberry Pi Pico", "short": "PICO", "fastener": "M2",
+    "rect": { "w": 11.4, "h": 47, "d": 2.1 },
+    "outline": { "w": 21, "h": 51 }
+  },
+  {
+    "id": "esp32-devkit", "name": "ESP32 DevKit", "short": "ESP", "fastener": "M2.5 or M3", "verify": true, "parametric": true,
+    "rect": { "w": 47.2, "h": 23.5, "d": 3.0 },
+    "outline": { "w": 51.5, "h": 28.3 }
+  },
+  {
+    "id": "nema17", "name": "NEMA 17 stepper", "short": "N17", "fastener": "M3",
+    "holes": [
+      { "x": -15.5, "y": -15.5, "d": 3.2 }, { "x": 15.5, "y": -15.5, "d": 3.2 },
+      { "x": -15.5, "y": 15.5, "d": 3.2 }, { "x": 15.5, "y": 15.5, "d": 3.2 }
+    ],
+    "cutouts": [{ "shape": "circle", "x": 0, "y": 0, "d": 22.5 }],
+    "outline": { "w": 42.3, "h": 42.3 }
+  },
+  {
+    "id": "sg90", "name": "SG90 micro servo", "short": "SG90", "fastener": "M2", "verify": true, "minWeb": 1.2,
+    "holes": [{ "x": -13.9, "y": 0, "d": 2.0 }, { "x": 13.9, "y": 0, "d": 2.0 }],
+    "cutouts": [{ "shape": "rect", "x": 0, "y": 0, "w": 23.2, "h": 12.6 }]
+  },
+  {
+    "id": "breadboard-half", "name": "Half size breadboard", "short": "BB", "fastener": "none",
+    "holes": [],
+    "outline": { "w": 82.5, "h": 54.5 }
+  },
+  {
+    "id": "tt-motor", "name": "TT gear motor", "short": "TT", "fastener": "M3", "verify": true,
+    "holes": [{ "x": 0, "y": -8.75, "d": 3.2 }, { "x": 0, "y": 8.75, "d": 3.2 }],
+    "cutouts": [{ "shape": "circle", "x": -11.5, "y": 0, "d": 7.5 }],
+    "outline": { "w": 37, "h": 22.5, "x": -6, "y": 0 }
+  },
+  {
+    "id": "battery-holder", "name": "18650 or AA holder", "short": "BAT", "fastener": "M3", "verify": true, "parametric": true,
+    "rect": { "w": 60, "h": 0, "d": 3.2 }
+  },
+  {
+    "id": "generic-rect", "name": "Generic rectangle", "short": "RECT", "fastener": "your choice", "parametric": true,
+    "rect": { "w": 40, "h": 30, "d": 3.2 }
+  }
+]

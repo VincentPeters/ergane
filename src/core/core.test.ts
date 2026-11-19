@@ -3,6 +3,7 @@ import {
   ANGLES, MATERIALS, PRESS_FIT, PROFILES, bbox, clampPart, couponKerfs, generate, measure, validate,
   type Ctx, type GridPart, type Material, type Part, type Path,
 } from './geometry'
+import { COMPONENTS, parseComponents } from './components'
 import { inside, type Pt } from './shapes'
 import { toSVG } from './svg'
 
@@ -211,6 +212,49 @@ describe('joints', () => {
     expect(paths.filter((p) => p.op === 'outer')).toHaveLength(6)
     expect(paths.filter((p) => p.op === 'engrave')).toHaveLength(0)
     expect(measure(part as GridPart, ctx()).edgeWeb).toBeCloseTo((8 - 3.2) / 2, 2)
+  })
+})
+
+describe('mounting plates', () => {
+  it.each(COMPONENTS)('$name mounts on a valid acrylic plate', (component) => {
+    const part: Part = { type: 'mount', component, border: 1 }
+    expect(validate(part, ctx())).toEqual([])
+    const paths = generate(part, ctx())
+    const plate = bbox(paths.filter((p) => p.op === 'outer'))
+    // Every cut and engraved line sits inside the plate outline.
+    const all = bbox(paths.filter((p) => p.op !== 'outer'))
+    expect(all.x).toBeGreaterThan(plate.x)
+    expect(all.x + all.w).toBeLessThan(plate.x + plate.w)
+  })
+
+  it('cuts component holes at their own diameter, not the grid hole', () => {
+    const pi = COMPONENTS.find((c) => c.id === 'raspberry-pi')!
+    const m = measure({ type: 'mount', component: pi, border: 1 } as GridPart, ctx())
+    expect(m.own).toEqual([2.7])
+    const radii = generate({ type: 'mount', component: pi, border: 1 }, ctx())
+      .flatMap((p) => (p.shape.kind === 'circle' ? [+p.shape.r.toFixed(3)] : []))
+    expect(radii).toContain(+(2.7 / 2 - 0.1).toFixed(3))
+  })
+
+  it('rejects malformed component JSON with a reason', () => {
+    expect(parseComponents('not json')).toMatch(/not valid JSON/)
+    expect(parseComponents('{"id":"Bad Id","name":"x","holes":[]}')).toMatch(/lowercase/)
+    expect(parseComponents('{"id":"x","name":"x","holes":[{"x":0,"y":0,"d":999}]}')).toMatch(/d from 0.5/)
+    const ok = parseComponents('[{"id":"my-board","name":"My board","rect":{"w":30,"h":20,"d":3.2},"extra":"<script>"}]')
+    expect(ok).toEqual([{ id: 'my-board', name: 'My board', rect: { w: 30, h: 20, d: 3.2 } }]) // unknown fields dropped
+  })
+})
+
+describe('adapter plate', () => {
+  it('puts the 8 mm grid on one side and the 12.7 mm grid on the other', () => {
+    const part: Part = { type: 'adapter', cols8: 3, cols127: 3, rows: 4 }
+    expect(validate(part, ctx())).toEqual([])
+    const h = generate(part, ctx()).flatMap((p) => (p.shape.kind === 'circle' ? [p.shape] : []))
+    const row = (r: number) => h.filter((c) => Math.abs(c.r - r) < 1e-6).map((c) => c.cx).sort((a, b) => a - b)
+    const m3 = [...new Set(row(1.5))], mec = [...new Set(row(4.1 / 2 - 0.1))]
+    expect(m3[1] - m3[0]).toBeCloseTo(8, 6)
+    expect(mec[1] - mec[0]).toBeCloseTo(12.7, 6)
+    expect(Math.min(...mec)).toBeGreaterThan(Math.max(...m3))
   })
 })
 

@@ -1,8 +1,9 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { COMPONENTS, parseComponents, sanitizeComponent, type ComponentDef } from '../src/core/components'
 import {
-  ANGLES, FIT_OFFSET, HOLES, MATERIALS, PROFILES, RULE_COUNT, bbox, clampPart, couponKerfs, defaultMix, generate, measure, validate,
+  ANGLES, FIT_OFFSET, HOLES, MATERIALS, PROFILES, RULE_COUNT, bbox, clampPart, couponKerfs, defaultMix, generate, measure, minWebFor, validate,
   type Ctx, type Fit, type GridPart, type HoleMix, type Part,
 } from '../src/core/geometry'
 import { toSVG } from '../src/core/svg'
@@ -51,8 +52,14 @@ const SHAPES: Record<ShapeKind, { name: string; group: string; defaults: Record<
     { key: 'bolt', label: 'Bolt length', hint: 'mm' }] },
   spacer: { name: 'Spacers', group: 'Joints', defaults: { outer: 8, quantity: 6 }, fields: [
     { key: 'outer', label: 'Outer diameter', hint: 'mm', step: 0.5 }, { key: 'quantity', label: 'Quantity', hint: '1–48' }] },
+  // The component itself is chosen in a custom block above these fields; see MountFields.
+  mount: { name: 'Mounting plate', group: 'Mounting', defaults: { component: COMPONENTS[0].id, border: 1, w: '', h: '', d: '' }, fields: [
+    { key: 'border', label: 'Border', hint: 'rings of holes' }] },
+  adapter: { name: 'Adapter 8 / 12.7', group: 'Mounting', defaults: { cols8: 4, cols127: 3, rows: 4 }, fields: [
+    { key: 'cols8', label: '8 mm columns', hint: 'holes' }, { key: 'cols127', label: '12.7 mm columns', hint: 'holes' },
+    { key: 'rows', label: 'Rows', hint: '8 mm holes' }] },
 }
-const GROUPS = ['Structural', 'Round', 'Connectors', 'Joints']
+const GROUPS = ['Structural', 'Round', 'Connectors', 'Joints', 'Mounting']
 const LIBRARY: { group: string; items: { kind: Kind; name: string }[] }[] = [
   ...GROUPS.map((group) => ({
     group,
@@ -77,7 +84,29 @@ function describe(p: GridPart, holes: number, pitch: number): [string, string] {
     case 'box': return [`Box ${p.cols} × ${p.rows} × ${p.height}${p.lid === 'open' ? ', open top' : ''}`, `box-${p.cols}x${p.rows}x${p.height}-${p.lid}`]
     case 'spacer': return [`Spacers ø ${p.outer} mm × ${p.quantity}`, `spacers-${p.outer}x${p.quantity}`]
     case 'nutjoint': return [`Captive nut joint, ${p.bolt} mm bolt`, `nutjoint-${p.cols}-${p.bolt}`]
+    case 'mount': return [`Mounting plate, ${p.component.name}`, `mount-${p.component.id}`]
+    case 'adapter': return ['Adapter plate, 8 / 12.7 mm', `adapter-${p.cols8}-${p.cols127}-${p.rows}`]
   }
+}
+
+// Imported components live in this browser, re-checked on every load.
+const COMPONENTS_KEY = 'cutgrid.components.v1'
+function loadComponents(): ComponentDef[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(COMPONENTS_KEY) ?? '[]')
+    return Array.isArray(raw) ? raw.flatMap((c) => { const s = sanitizeComponent(c); return typeof s === 'string' ? [] : [s] }) : []
+  } catch { return [] }
+}
+function saveComponents(list: ComponentDef[]) {
+  try { localStorage.setItem(COMPONENTS_KEY, JSON.stringify(list)) } catch { /* kept for this visit only */ }
+}
+
+// A parametric component takes the typed width, height and hole size over its defaults.
+function resolveComponent(lib: ComponentDef[], v: Record<string, Value>): ComponentDef {
+  const def = lib.find((c) => c.id === v.component) ?? COMPONENTS[0]
+  if (!def.parametric || !def.rect) return def
+  const pick = (k: 'w' | 'h' | 'd') => (v[k] === '' || !Number.isFinite(Number(v[k])) ? def.rect![k] : Number(v[k]))
+  return { ...def, rect: { w: pick('w'), h: pick('h'), d: pick('d') } }
 }
 const MIXES: { id: HoleMix; name: string }[] = [
   { id: 'all-m3', name: 'All M3' },
@@ -112,7 +141,18 @@ export default function Page() {
   const [zoom, setZoom] = useState<'fit' | 'true'>('fit')
   const [best, setBest] = useState<number | null>(null)
 
-  useEffect(() => setKerfs(loadKerfs()), [])
+  const [custom, setCustom] = useState<ComponentDef[]>([])
+  const [importMsg, setImportMsg] = useState('')
+  useEffect(() => { setKerfs(loadKerfs()); setCustom(loadComponents()) }, [])
+  const library = [...COMPONENTS, ...custom.filter((c) => !COMPONENTS.some((b) => b.id === c.id))]
+  const importComponents = async (file: File) => {
+    const parsed = parseComponents(await file.text())
+    if (typeof parsed === 'string') return setImportMsg(parsed)
+    const next = [...custom.filter((c) => !parsed.some((p) => p.id === c.id)), ...parsed]
+    setCustom(next)
+    saveComponents(next)
+    setImportMsg(`Added ${parsed.length} component${parsed.length === 1 ? '' : 's'}.`)
+  }
 
   const profile = PROFILES.find((p) => p.id === profileId)!
   const base = MATERIALS.find((m) => m.id === materialId)!
@@ -125,7 +165,9 @@ export default function Page() {
     saveKerfs(next)
   }
 
-  const part: Part = kind === 'coupon' ? { type: 'coupon' } : clampPart({ type: kind, ...params[kind], label } as Part)
+  const part: Part = kind === 'coupon' ? { type: 'coupon' }
+    : kind === 'mount' ? clampPart({ type: 'mount', component: resolveComponent(library, params.mount), border: Number(params.mount.border), label })
+    : clampPart({ type: kind, ...params[kind], label } as Part)
   const setParam = (key: string, v: Value) => kind !== 'coupon' && setParams({ ...params, [kind]: { ...params[kind], [key]: v } })
   const ctx: Ctx = { profile, material: { ...base, kerf }, fit, holeMix: mix }
 
@@ -138,7 +180,7 @@ export default function Page() {
   const faults: Fault[] = !m ? [] : issues.flatMap((i) => {
     const span = i.rule === 'hole-web' ? m.holeSpan : m.edgeSpan
     const web = i.rule === 'hole-web' ? m.holeWeb : m.edgeWeb
-    return span ? [{ span, label: `${web.toFixed(2)} < ${base.minWeb}`, edge: i.rule === 'edge-web' }] : []
+    return span ? [{ span, label: `${web.toFixed(2)} < ${minWebFor(part, ctx)}`, edge: i.rule === 'edge-web' }] : []
   })
   const outer = bbox(paths.filter((p) => p.op === 'outer'))
   const nominal = m ?? { w: outer.w - kerf, h: outer.h - kerf }
@@ -201,7 +243,7 @@ export default function Page() {
             </ul>
           </section>
         ))}
-        <p className="soon">Mounting plates follow in the next milestone.</p>
+        <p className="soon">Gears, wheels and pulleys follow in the next milestone.</p>
       </nav>
 
       <main className="stage">
@@ -230,6 +272,27 @@ export default function Page() {
         ) : (
           <>
             <h2 className="it">Parameters</h2>
+            {part.type === 'mount' && (
+              <>
+                <label className="row">Component
+                  <select value={part.component.id} onChange={(e) => setParam('component', e.target.value)}>
+                    {library.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </label>
+                {part.component.parametric && part.component.rect && (['w', 'h', 'd'] as const).map((k) => (
+                  <Num key={k} label={{ w: 'Hole spacing x', h: 'Hole spacing y', d: 'Hole ø' }[k]} hint="mm" step={0.1}
+                    value={part.component.rect![k]} onChange={(n) => setParam(k, n)} />
+                ))}
+                <p className="note-text">
+                  {part.component.fastener && `Fasteners: ${part.component.fastener}. `}
+                  {part.component.verify ? 'Check this pattern against your part’s datasheet before cutting.' : 'Pattern from the maker’s drawing.'}
+                </p>
+                <label className="link file">Import components (JSON)
+                  <input type="file" accept=".json,application/json" onChange={(e) => { const f = e.target.files?.[0]; if (f) importComponents(f); e.target.value = '' }} />
+                </label>
+                {importMsg && <p className="note-text" role="status">{importMsg}</p>}
+              </>
+            )}
             {SHAPES[part.type].fields.map((f) => {
               const v = params[part.type][f.key]
               return f.options ? (
@@ -259,10 +322,11 @@ export default function Page() {
                 [elongated ? 'Length' : 'Width', m!.w, false],
                 [elongated ? 'Width' : 'Height', m!.h, false],
                 ...m!.types.map((t) => [`Hole ø ${HOLES[t].name}`, HOLES[t].d + FIT_OFFSET[fit], false] as const),
+                ...m!.own.map((d) => [`Hole ø ${d.toFixed(2)} part`, d + FIT_OFFSET[fit], false] as const),
                 ['Edge web', m!.edgeWeb, issues.some((i) => i.rule === 'edge-web')],
                 ['Hole web', m!.holeWeb, issues.some((i) => i.rule === 'hole-web')],
                 ...(part.type === 'box' || part.type === 'bracket' || part.type === 'nutjoint' ? [['Finger depth', base.thickness, false] as const] : []),
-                [`Min web, ${base.name}`, base.minWeb, false],
+                [`Min web, ${minWebFor(part, ctx) < base.minWeb ? 'this part' : base.name}`, minWebFor(part, ctx), false],
               ].map(([k, v, bad]) => (
                 <div key={k as string} className={bad ? 'bad' : ''}><dt>{k}</dt><dd>{mm(v as number)}<u>mm</u></dd></div>
               ))}
@@ -286,18 +350,29 @@ export default function Page() {
 // Kerf is the most consequential number on screen, so it always reads "0.20": a number input would
 // follow the browser locale ("0,2"). Accepts either separator; settles to two decimals on blur.
 function KerfInput({ value, onCommit }: { value: number; onCommit: (v: number) => void }) {
-  const [draft, setDraft] = useState(value.toFixed(2))
+  return <DecimalInput value={value} onCommit={onCommit} format={(v) => v.toFixed(2)} valid={(v) => v >= 0 && v <= 1}
+    aria-describedby="kerf-src" aria-label="Kerf in millimetres" />
+}
+
+// Numbers always read with a decimal point, whatever the browser locale ("3.2", never "3,2"); a number
+// input would follow the locale. Accepts either separator, commits valid values as they are typed,
+// and settles to the formatted value on blur.
+function DecimalInput({ value, onCommit, format = (v) => String(+v.toFixed(4)), valid = () => true, ...rest }: {
+  value: number; onCommit: (v: number) => void; format?: (v: number) => string; valid?: (v: number) => boolean
+} & Omit<React.InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange'>) {
+  const shown = Number.isFinite(value) ? format(value) : ''
+  const [draft, setDraft] = useState(shown)
   const parse = (s: string) => Number(s.trim().replace(',', '.'))
   // Follow outside changes (material switch, coupon result) without fighting a half-typed "0." draft.
-  useEffect(() => { if (parse(draft) !== value) setDraft(value.toFixed(2)) }, [value]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (parse(draft) !== value) setDraft(shown) }, [value]) // eslint-disable-line react-hooks/exhaustive-deps
   return (
-    <input type="text" inputMode="decimal" className="num" value={draft} aria-describedby="kerf-src" aria-label="Kerf in millimetres"
+    <input {...rest} type="text" inputMode="decimal" className="num" value={draft}
       onChange={(e) => {
         setDraft(e.target.value)
         const v = parse(e.target.value)
-        if (e.target.value.trim() && Number.isFinite(v) && v >= 0 && v <= 1) onCommit(v)
+        if (e.target.value.trim() && Number.isFinite(v) && valid(v)) onCommit(v)
       }}
-      onBlur={() => setDraft(value.toFixed(2))} />
+      onBlur={() => setDraft(shown)} />
   )
 }
 
@@ -305,8 +380,7 @@ function Num(props: { label: string; hint: string; value: number; step?: number;
   return (
     <label className="row">
       <span>{props.label} <small>{props.hint}</small></span>
-      <input type="number" value={Number.isFinite(props.value) ? props.value : ''} step={props.step ?? 1}
-        onChange={(e) => props.onChange(e.target.valueAsNumber)} />
+      <DecimalInput value={props.value} onCommit={props.onChange} />
     </label>
   )
 }
