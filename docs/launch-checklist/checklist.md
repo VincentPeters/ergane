@@ -11,7 +11,7 @@ GitHub, with issues as the support channel. Owner is in Belgium, so EU rules (GD
 
 ## Launch gate
 Safe to go public once every **[Critical]** box that applies is `[x]`.
-Open criticals: licence (8), Sentry IP
+Open criticals: Sentry IP
 setting + DPA (6, 8), uptime monitor (6), rollback drill (11), cross-browser check (12), Core Web Vitals (2),
 keyboard + WCAG check (4), physical tests (12).
 
@@ -90,7 +90,7 @@ components) lives only in each visitor's browser storage.
 **Scope:** EU owner and audience. Personal data processed: IP addresses by Vercel (hosting and
 analytics) and Sentry (error reports). No cookies.
 - [x] [Critical] Privacy notice — `/privacy` (`app/privacy/page.tsx`), linked from the library rail; contact hello@vinnie.studio; live. Share-link kits are stripped from every URL Sentry and analytics send (`a169ee9`). Its claim that Sentry stores no IP needs the Sentry setting in todo A3.
-- [ ] [Critical] Licence and terms — code licence and licence for designs made with Ergane (open source and open design are brand commitments); needed before the repo goes public.
+- [x] [Critical] Licence — code MIT (`LICENSE`); component library, starter kit and design system CC BY-SA 4.0 (`LICENSE-DESIGNS.md`).
 - N/A — Consent banner: no cookies or non-essential storage; analytics must be cookieless (Vercel Web Analytics is).
 - [~] [Critical] DPAs with processors — Vercel's DPA is part of its terms; Sentry's DPA must be accepted in the dashboard (Settings → Legal & Compliance).
 - N/A — DSAR mechanism: no accounts; nothing stored server-side about a person.
@@ -114,7 +114,7 @@ analytics) and Sentry (error reports). No cookies.
 **Scope:** Vercel builds remotely; deploys so far via the Vercel CLI from a local checkout.
 - [ ] [Critical] Rollback exercised — a promote was done, `vercel rollback` never tried.
 - [~] [Critical] Repeatable builds — Vercel builds from source on every deploy (no local prod builds); not yet tied to git, so a deploy can ship uncommitted files.
-- [ ] [Recommended] Git integration: GitHub repo connected to Vercel, previews per pull request, production from `main`.
+- [x] [Recommended] Git integration — github.com/VincentPeters/ergane connected to Vercel; production from `main`, previews per pull request; CI required on pull requests by the `main` ruleset.
 - [ ] [Recommended] Tests as a release gate — 97 Vitest tests pass locally; nothing runs them in CI.
 - [ ] [Nice-to-have] Launch timing — avoid a Friday announcement.
 
@@ -131,7 +131,7 @@ analytics) and Sentry (error reports). No cookies.
 - [x] [Critical] Incident plan — "When something breaks" in `README.md`.
 - [x] [Critical] Runbook — `README.md`: develop, deploy, environment, DNS, rollback, storage keys.
 - [x] [Recommended] Architecture docs — `README.md`, `docs/specs.md` (v0.3), `PRODUCT.md`, `DESIGN.md`.
-- [ ] [Recommended] Support channel — GitHub issues, once the repo is public.
+- [x] [Recommended] Support channel — GitHub issues with bug and part-request forms, linked from the app ("Report a problem"); security via private vulnerability reporting (`SECURITY.md`).
 - [ ] [Recommended] Launch-day post for the maker communities.
 - [ ] [Nice-to-have] Review this checklist after launch.
 

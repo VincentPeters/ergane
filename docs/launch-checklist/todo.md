@@ -28,7 +28,7 @@ the sheet previews inject SVG built from numbers only. Add the analytics and Sen
 Done when: `curl -sI https://ergane.vinnie.studio` shows all five headers and the app still works
 (export, kit drawer, share link) with no CSP errors in the console.
 
-### A2. Privacy notice and licence — [layer 8]
+### A2. Privacy notice and licence — [layer 8] (done: /privacy, MIT + CC BY-SA 4.0)
 1. Choose the licences. Suggested: MIT or Apache-2.0 for the code; CC BY-SA 4.0 (or CERN-OHL-S, an open hardware licence) for designs made with Ergane and the component library.
 2. Add `LICENSE` to the repo and a short `/privacy` page (a second static page) covering:
    - Vercel serves the site and logs IP addresses; Vercel Web Analytics counts visits without cookies.
@@ -76,7 +76,7 @@ Done when: kerf and press fit are calibrated, the box assembles, bolts and axles
 
 ## B. First week (Recommended)
 
-### B1. Public GitHub repo + Vercel git integration — [layers 11, 13]
+### B1. Public GitHub repo + Vercel git integration — [layers 11, 13] (done 2026-11-19: github.com/VincentPeters/ergane, CI, ruleset on main, Vercel connected)
 1. Create the repo (licence from A2), push `main`.
 2. Connect it to the `cut-grid` Vercel project; production from `main`, previews per pull request.
 3. Add a GitHub Action that runs `npm ci && npx vitest run && npm run build` on pull requests; require it before merge.

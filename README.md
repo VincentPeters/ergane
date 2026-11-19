@@ -26,13 +26,14 @@ package name, Vercel project and browser storage keys (`cutgrid.*`) keep it so s
 
 ## Deploy
 
-Hosted on Vercel, project `cut-grid` in the `vincentpeters-projects` team. Builds run on Vercel.
+Hosted on Vercel, project `cut-grid` in the `vincentpeters-projects` team, connected to this repository:
 
-```sh
-vercel link --yes --scope vincentpeters-projects   # once per fresh clone
-vercel deploy                                       # preview (behind Vercel login)
-vercel deploy --prod                                # production
-```
+- a push to `main` deploys production;
+- every pull request gets a preview deployment, and CI (`.github/workflows/ci.yml`) must pass before merge.
+
+`main` allows no force pushes or deletion; changes from others arrive through pull requests.
+Manual deploys still work after `vercel link --yes --scope vincentpeters-projects`:
+`vercel deploy` (preview, behind Vercel login) or `vercel deploy --prod`.
 
 Production environment variables: `NEXT_PUBLIC_SENTRY_DSN` (Sentry project `studio-vinnie/ergane`, EU region).
 Without it, builds report no errors, which is what local builds and forks should do.
