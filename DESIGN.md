@@ -184,9 +184,9 @@ A night-chart palette: deep blue-navy grounds, warm chalk ink, one amber flashli
 
 ## Layout
 
-A fixed three-column instrument shell under a 56px top bar: library rail 228px, chart stage fluid, parameter column 304px, full viewport height. Columns are divided by hairlines, not gutters or cards. The stage holds a bar (title, meta, Fit / 1:1 segmented control, Laser colours switch) above the plate, which fills the remaining space with 16px by 20px padding.
+A fixed three-column instrument shell under a 56px top bar: library rail 228px, chart stage fluid, parameter column 304px, full viewport height, with the kit drawer as a full-width row along the bottom. Columns are divided by hairlines, not gutters or cards. The stage holds a bar (title, meta, Fit / 1:1 segmented control, Laser colours switch) above the plate, which fills the remaining space with 16px by 20px padding.
 
-Below 960px the shell collapses to one column: top bar wraps, the library becomes a horizontal scroller without section names, then the plate (min 420px, up to 70dvh), then parameters.
+Below 960px the shell collapses to one column: top bar wraps, the library becomes a horizontal scroller without section names, then the plate (min 420px, up to 70dvh), then parameters, then the drawer with its columns stacked.
 
 The plate itself adapts: when the plate is narrower than 560px it goes compact, dropping rulers, leaders, the pitch note and the owl figure, and keeps outline, holes, overall dimensions and faults.
 
@@ -209,9 +209,10 @@ Gently rounded rectangles (6px) for controls, a slightly softer 8px for the char
 Quiet and certain: one chalk button per screen, everything else text or segmented.
 - **Shape:** gently rounded (6px), 34px tall.
 - **Primary:** chalk fill, navy text, Public Sans 600 14px, 16px side padding. Used for Export.
-- **Hover / Focus:** fill brightens to white over 160ms cubic-bezier(0.16,1,0.3,1); focus is a 2px amber outline, 2px offset.
+- **Hover / Focus:** fill brightens by 6% (brightness filter, no extra colour); focus is a 2px amber outline, 2px offset.
 - **Disabled:** Hairline fill, Mute text, not-allowed cursor. Export disables when a rule fails.
-- **Link:** amber text, no chrome, underline on hover (3px offset). Used for Calibrate.
+- **Link:** amber text, no chrome, underline on hover (3px offset). Used for Calibrate and row actions (Edit, Remove).
+- **Ghost:** Navy Raised fill, Hairline border, Chalk Dim body-small text, 32px tall; border shifts to Coordinate Grid on hover. Every secondary action (Add to kit, kit actions, Save machine or material). A file picker hides its input inside a ghost button.
 
 ### Segmented control
 - **Style:** hairline-bordered group, 30px options divided by hairlines; selected option takes Navy Raised and chalk text. Used for Fit / 1:1.
@@ -230,7 +231,7 @@ Quiet and certain: one chalk button per screen, everything else text or segmente
 - **Selected:** Navy Raised fill with a 1px amber inset ring.
 
 ### Coupon label chips
-- **Style:** four-column grid of 36px Navy Raised tiles with hairline border.
+- **Style:** four-column grid of 36px Navy Raised tiles with hairline border (five columns for the five press-fit slots).
 - **Selected:** amber border and text over an 8% amber wash.
 
 ### Chart plate (signature)
@@ -242,6 +243,16 @@ The work area is a star-atlas plate on Plate Field with an 8px radius and hairli
 - **Figure:** the Ergane owl, engraved in hairlines at 0.09 opacity, anchored to the plate centre beneath the plot. Absent on the coupon and on compact plates.
 - **Legend:** bottom row, 12px Mute, with the live scale readout right-aligned.
 - **Laser colours (the one motion moment):** the same paths re-ink from chalk to cut-layer preview colours, the magnitude dots shrink and fade away, all over 320ms cubic-bezier(0.16,1,0.3,1). Reduced motion removes the transition.
+
+### Kit drawer
+The bottom row of the shell; the bar is always visible, the body opens below it.
+- **Bar:** 48px; a ghost Kit toggle with a drawn chevron, the kit name in Public Sans 600, a body-small meta line (lines, pieces, sheets, sheet size), a Fault Red count of blocked lines, a right-aligned status notice, and the chalk Export kit button.
+- **Body:** 300px, three scrolling columns: the parts table, sheet thumbnails, and kit actions with the Material and Machine editors as hairline-topped fieldsets with Spectral italic legends.
+- **Parts table:** body-small rows on hairlines, Mute part IDs (P01 …), a 56px quantity field, Edit and Remove links; a blocked line turns Fault Red and carries its rule messages as a tooltip.
+- **Sheet thumbnails:** 240px Plate Field tiles at the sheet's aspect ratio, every path in chalk hairlines, captioned "Sheet 01" in Mute.
+
+### Custom grid fields
+- When the CUSTOM grid is chosen, a "Custom grid" section with pitch, hole ø and strip width fields leads the parameter column.
 
 ### Rule status
 - **Style:** below Measured, above a hairline. A ringed amber lamp with "All rules pass" and a passed / total count; on failure the lamp and line turn Fault Red ("Export blocked") and a list states each failure.
