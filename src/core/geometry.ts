@@ -1,7 +1,7 @@
 // Geometry core. Plain TypeScript, no React: the UI, exporters and a future CLI share it.
 // Units are mm. Coordinates follow SVG: x right, y down, origin at the nominal outline's top-left.
 import { text, textWidth } from './font'
-import { circle, closestSegSeg, inside, roundedBox, roundedConvex, sector, stadium, union, type Pt } from './shapes'
+import { circle, closestSegSeg, difference, inside, rect, roundedBox, roundedConvex, sector, stadium, union, type Pt } from './shapes'
 
 export type Op = 'engrave' | 'inner' | 'outer'
 export type Shape =
@@ -54,7 +54,11 @@ export type Part =
   | { type: 'connector'; shape: ConnectorShape; arm: number; label?: boolean }
   | { type: 'disc'; diameter: number; count: number; label?: boolean }
   | { type: 'curved'; radius: number; angle: number; label?: boolean }
+  | { type: 'spacer'; outer: number; quantity: number; label?: boolean }
+  | { type: 'bracket'; cols: number; base: number; height: number; label?: boolean }
+  | { type: 'box'; cols: number; rows: number; height: number; lid: Lid; label?: boolean }
   | { type: 'coupon' }
+export type Lid = 'closed' | 'open'
 export type GridPart = Exclude<Part, { type: 'coupon' }>
 
 export type Ctx = { profile: Profile; material: Material; fit: Fit; holeMix?: HoleMix }
@@ -91,9 +95,20 @@ export function clampPart(part: Part): Part {
     case 'connector': return { ...part, shape: (['T', 'X', 'H', 'Y'] as const).includes(part.shape) ? part.shape : 'X', arm: int(part.arm, 1, 12) }
     case 'disc': return { ...part, diameter: int(part.diameter, 3, 40), count: int(part.count, 3, 24) }
     case 'curved': return { ...part, radius: int(part.radius, 2, 60), angle: int(part.angle, 10, 270) }
+    case 'spacer': return { ...part, outer: num(part.outer, 5, 30), quantity: int(part.quantity, 1, 48) }
+    case 'bracket': return { ...part, cols: int(part.cols, 2, 30), base: int(part.base, 1, 30), height: int(part.height, 1, 30) }
+    case 'box': return {
+      ...part, cols: int(part.cols, 2, 30), rows: int(part.rows, 2, 30), height: int(part.height, 1, 30),
+      lid: part.lid === 'open' ? 'open' : 'closed',
+    }
     case 'coupon': return part
   }
 }
+
+/** How a panel edge meets its neighbour: plain, fingers at both ends, or notches at both ends. */
+type EdgeKind = 'flat' | 'tabs' | 'slots'
+const GAP = 3 // mm between pieces of a multi-piece part
+const OUT = 1 // mm a notch extends past the edge, so the cut never shares a line with the outline
 
 /** A hole (a equals b) or a slot (a to b), cut at the hole type's diameter. */
 type Feature = { a: Pt; b: Pt; type: HoleType }
@@ -121,6 +136,41 @@ function build(part: GridPart, ctx: Ctx, g: number): Geo {
       for (let i = 0; i < cols; i++)
         if (keep(i, j)) fs.push(hole(i * p, j * p, i + j, i === 0 || j === 0 || i === cols - 1 || j === rows - 1))
     return fs
+  }
+
+  // A flat face with a hole grid and finger-jointed edges, top-left corner at `at`.
+  // Edges are [top, right, bottom, left]. A jointed edge adds the material thickness to its margin,
+  // so holes keep a full edge margin from the bottom of the finger notches.
+  const t = ctx.material.thickness
+  const panel = (cols: number, rows: number, edges: [EdgeKind, EdgeKind, EdgeKind, EdgeKind], at: Pt) => {
+    const [eT, eR, eB, eL] = edges
+    const inset = (e: EdgeKind) => (e === 'flat' ? mMax : mMax + t)
+    const [ox, oy] = at
+    const w = (cols - 1) * p + inset(eL) + inset(eR), h = (rows - 1) * p + inset(eT) + inset(eB)
+    const features: Feature[] = []
+    for (let j = 0; j < rows; j++)
+      for (let i = 0; i < cols; i++)
+        features.push(hole(ox + inset(eL) + i * p, oy + inset(eT) + j * p, i + j, i === 0 || j === 0 || i === cols - 1 || j === rows - 1))
+    // Notches along an edge of length L, as [start, end] along it. Cutting grows the outline by g:
+    // fingers widen by g on each side, notches narrow by g and get g shallower.
+    const notches = (L: number, kind: EdgeKind): [number, number][] => {
+      if (kind === 'flat') return []
+      let n = Math.floor(L / p)
+      if (n % 2 === 0) n -= 1
+      n = Math.max(3, n)
+      const fw = L / n
+      return Array.from({ length: n }, (_, k) => k)
+        .filter((k) => (kind === 'tabs' ? k % 2 === 1 : k % 2 === 0))
+        .map((k) => [k === 0 ? -OUT : k * fw + g, k === n - 1 ? L + OUT : (k + 1) * fw - g])
+    }
+    const cuts: Pt[][] = [
+      ...notches(w, eT).map(([a, b]) => rect(ox + a, oy - g - OUT, ox + b, oy + t - g)),
+      ...notches(w, eB).map(([a, b]) => rect(ox + a, oy + h - t + g, ox + b, oy + h + g + OUT)),
+      ...notches(h, eL).map(([a, b]) => rect(ox - g - OUT, oy + a, ox + t - g, oy + b)),
+      ...notches(h, eR).map(([a, b]) => rect(ox + w - t + g, oy + a, ox + w + g + OUT, oy + b)),
+    ]
+    const outer = difference(rect(ox - g, oy - g, ox + w + g, oy + h + g), cuts)[0]
+    return { outer, features, w, h }
   }
 
   switch (part.type) {
@@ -214,6 +264,49 @@ function build(part: GridPart, ctx: Ctx, g: number): Geo {
       }
       return { features: fs, outer: [circle([0, 0], R + g)], inner: [], corner: R, label: `D${part.diameter}` }
     }
+    case 'spacer': {
+      // Rings set out on a square grid with a 3 mm gap, one hole each.
+      const per = Math.ceil(Math.sqrt(part.quantity)), step = part.outer + 3, R = part.outer / 2
+      const fs: Feature[] = [], outer: Pt[][] = []
+      for (let k = 0; k < part.quantity; k++) {
+        const c: Pt = [(k % per) * step, Math.floor(k / per) * step]
+        fs.push(hole(c[0], c[1], k))
+        outer.push(circle(c, R + g))
+      }
+      return { features: fs, outer, inner: [], corner: R, label: '' }
+    }
+    case 'bracket': {
+      // Base and upright meet along one finger joint; the upright owns the joint's end fingers.
+      const base = panel(part.cols, part.base, ['slots', 'flat', 'flat', 'flat'], [0, 0])
+      const up = panel(part.cols, part.height, ['flat', 'flat', 'tabs', 'flat'], [base.w + GAP, 0])
+      return { features: [...base.features, ...up.features], outer: [base.outer, up.outer], inner: [], corner: 0, label: `B${part.cols}` }
+    }
+    case 'box': {
+      // Six (or five) faces with finger joints on every shared edge. Front and back own the corner cubes:
+      // their edges keep fingers at both ends; sides keep end fingers only toward bottom and lid;
+      // bottom and lid keep none. That way each corner cube belongs to exactly one panel.
+      const { cols, rows, height } = part
+      const lid: EdgeKind = part.lid === 'closed' ? 'tabs' : 'flat'
+      const faces: [number, number, [EdgeKind, EdgeKind, EdgeKind, EdgeKind], string][] = [
+        [cols, rows, ['slots', 'slots', 'slots', 'slots'], 'bottom'],
+        ...(part.lid === 'closed' ? [[cols, rows, ['slots', 'slots', 'slots', 'slots'], 'lid'] as typeof faces[number]] : []),
+        [cols, height, [lid, 'tabs', 'tabs', 'tabs'], 'front'],
+        [cols, height, [lid, 'tabs', 'tabs', 'tabs'], 'back'],
+        [rows, height, [lid, 'slots', 'tabs', 'slots'], 'left'],
+        [rows, height, [lid, 'slots', 'tabs', 'slots'], 'right'],
+      ]
+      // Shelf layout: two faces per row, 3 mm apart, placed from the nominal sizes so cut and nominal align.
+      const out: Geo = { features: [], outer: [], inner: [], corner: 0, label: `${cols}x${rows}x${height}` }
+      let x = 0, y = 0, rowH = 0
+      faces.forEach(([c, r, edges], i) => {
+        const pn = panel(c, r, edges, [x, y])
+        out.features.push(...pn.features)
+        out.outer.push(pn.outer)
+        rowH = Math.max(rowH, pn.h)
+        if (i % 2 === 1) { x = 0; y += rowH + GAP; rowH = 0 } else x += pn.w + GAP
+      })
+      return out
+    }
     case 'curved': {
       // Holes on the centre arc one pitch apart as a straight line (chord), so they bolt to straight parts.
       const R = part.radius * p
@@ -275,9 +368,11 @@ const LABEL_CLEAR = 0.8 // gap between text and hole edge, mm, so the label neve
 function label(geo: Geo, ctx: Ctx): Path[] {
   const p = ctx.profile.pitch
   const holes = geo.features.filter((f) => f.a[0] === f.b[0] && f.a[1] === f.b[1])
+  if (!geo.label) return []
   for (const a of holes) {
     const b = holes.find((h) => Math.abs(h.a[1] - a.a[1]) < 1e-6 && Math.abs(h.a[0] - a.a[0] - p) < 1e-6)
-    if (!b) continue
+    // Both holes must sit on one piece: two spacers one pitch apart have only air between them.
+    if (!b || !geo.outer.some((o) => inside([a.a[0] + p / 2, a.a[1]], o))) continue
     const gap = p - (HOLES[a.type].d + HOLES[b.type].d) / 2 - 2 * LABEL_CLEAR
     const h = Math.min(LABEL_H, (LABEL_H * gap) / textWidth(geo.label, LABEL_H))
     return h < 1 ? [] : engrave(geo.label, a.a[0] + p / 2, a.a[1], h)

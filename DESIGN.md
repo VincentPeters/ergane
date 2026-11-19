@@ -43,6 +43,12 @@ typography:
     fontWeight: 400
     lineHeight: 1.45
     fontFeature: "tnum"
+  body-sm:
+    fontFamily: "Public Sans, system-ui, sans-serif"
+    fontSize: "13px"
+    fontWeight: 400
+    lineHeight: 1.45
+    fontFeature: "tnum"
   label:
     fontFamily: "Public Sans, system-ui, sans-serif"
     fontSize: "12px"
@@ -168,6 +174,7 @@ A night-chart palette: deep blue-navy grounds, warm chalk ink, one amber flashli
 - **Headline** (Spectral italic 300, 17px): section names in the library rail and parameter column (Structural, Parameters, Measured, Calibrate kerf).
 - **Title** (Public Sans 600, 16px): the wordmark in the top bar.
 - **Body** (Public Sans 400, 14px, 1.45, tabular): values, fields, list items, rule copy. Measured values in chalk, terms in Text Secondary.
+- **Body small** (Public Sans 400, 13px, 1.45, tabular): secondary lines beside a value: the part meta line, kerf unit, segmented and switch labels, rule lists, coupon note.
 - **Label** (Public Sans 400, 12px, 0.04em, uppercase): inline labels for top-bar controls only (Grid, Material, Kerf, Fit). Hints, units and legend use 12px without uppercase.
 
 ### Named Rules

@@ -3,6 +3,7 @@ import {
   ANGLES, MATERIALS, PROFILES, bbox, clampPart, couponKerfs, generate, measure, validate,
   type Ctx, type GridPart, type Material, type Part, type Path,
 } from './geometry'
+import { inside, type Pt } from './shapes'
 import { toSVG } from './svg'
 
 const acrylic = MATERIALS[0]
@@ -158,6 +159,46 @@ describe('M3 shapes', () => {
     const issues = validate({ type: 'disc', diameter: 3, count: 12 }, ctx())
     expect(issues.map((i) => i.rule)).toContain('hole-web')
     expect(issues[0].message).toContain('fewer ring holes')
+  })
+})
+
+describe('joints', () => {
+  const noKerfCtx = () => ctx(noKerf)
+  const outers = (part: Part, c = ctx()) => generate(part, c).filter((p) => p.op === 'outer').map((p) => (p.shape as { pts: Pt[] }).pts)
+  const holeCount = (part: Part) => generate(part, ctx()).filter((p) => p.shape.kind === 'circle').length
+
+  it('cuts a closed box as six faces and an open one as five, holes on every face', () => {
+    const box: Part = { type: 'box', cols: 5, rows: 4, height: 3, lid: 'closed' }
+    expect(outers(box)).toHaveLength(6)
+    expect(outers({ ...box, lid: 'open' })).toHaveLength(5)
+    expect(holeCount(box)).toBe(2 * (5 * 4 + 5 * 3 + 4 * 3))
+    expect(validate(box, ctx())).toEqual([])
+  })
+
+  it('makes the bracket fingers and notches exactly complementary', () => {
+    const [base, up] = outers({ type: 'bracket', cols: 5, base: 3, height: 3 }, noKerfCtx())
+    const bb = bbox([{ op: 'outer', shape: { kind: 'poly', pts: base } }])
+    const ub = bbox([{ op: 'outer', shape: { kind: 'poly', pts: up } }])
+    expect(ub.w).toBeCloseTo(bb.w, 6) // the joined edges have the same length
+    const t = acrylic.thickness
+    for (let s = 0.25; s < bb.w; s += 0.5) {
+      const inBase = inside([bb.x + s, bb.y + t / 2], base)
+      const inUp = inside([ub.x + s, ub.y + ub.h - t / 2], up)
+      expect(inBase !== inUp).toBe(true) // exactly one piece fills each spot along the joint
+    }
+  })
+
+  it('keeps face holes a full margin clear of the finger notches', () => {
+    const m = measure({ type: 'box', cols: 5, rows: 4, height: 3, lid: 'closed' }, ctx())
+    expect(m.edgeWeb).toBeCloseTo(4 - 1.6, 6)
+  })
+
+  it('lays out spacers with one hole each and no label between them', () => {
+    const part: Part = { type: 'spacer', outer: 8, quantity: 6, label: true }
+    const paths = generate(part, ctx())
+    expect(paths.filter((p) => p.op === 'outer')).toHaveLength(6)
+    expect(paths.filter((p) => p.op === 'engrave')).toHaveLength(0)
+    expect(measure(part as GridPart, ctx()).edgeWeb).toBeCloseTo((8 - 3.2) / 2, 2)
   })
 })
 

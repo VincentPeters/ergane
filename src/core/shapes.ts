@@ -78,6 +78,15 @@ export function union(polys: Pt[][]): { outer: Pt[][]; holes: Pt[][] } {
   return { outer: mp.map((poly) => open(poly[0])), holes: mp.flatMap((poly) => poly.slice(1).map(open)) }
 }
 
+export const rect = (x0: number, y0: number, x1: number, y1: number): Pt[] => [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]
+
+/** A polygon with other polygons cut away; outer rings only. */
+export function difference(subject: Pt[], cuts: Pt[][]): Pt[][] {
+  if (!cuts.length) return [subject]
+  const mp = pc.difference([subject], ...cuts.map((c) => [c] as pcTypes.Polygon))
+  return mp.map((poly) => poly[0].slice(0, -1) as Pt[])
+}
+
 /** Even-odd point in polygon test. */
 export function inside(p: Pt, poly: Pt[]): boolean {
   let hit = false

@@ -39,8 +39,17 @@ const SHAPES: Record<ShapeKind, { name: string; group: string; defaults: Record<
     { key: 'diameter', label: 'Diameter', hint: 'pitches' }, { key: 'count', label: 'Ring holes', hint: '3–24' }] },
   curved: { name: 'Curved strip', group: 'Round', defaults: { radius: 6, angle: 90 }, fields: [
     { key: 'radius', label: 'Radius', hint: 'pitches' }, { key: 'angle', label: 'Arc', hint: 'degrees' }] },
+  bracket: { name: 'Corner bracket', group: 'Joints', defaults: { cols: 5, base: 3, height: 3 }, fields: [
+    { key: 'cols', label: 'Width', hint: 'holes' }, { key: 'base', label: 'Base', hint: 'holes' },
+    { key: 'height', label: 'Upright', hint: 'holes' }] },
+  box: { name: 'Box', group: 'Joints', defaults: { cols: 5, rows: 4, height: 3, lid: 'closed' }, fields: [
+    { key: 'cols', label: 'Width', hint: 'holes' }, { key: 'rows', label: 'Depth', hint: 'holes' },
+    { key: 'height', label: 'Height', hint: 'holes' },
+    { key: 'lid', label: 'Lid', options: [['closed', 'Closed'], ['open', 'Open top']] }] },
+  spacer: { name: 'Spacers', group: 'Joints', defaults: { outer: 8, quantity: 6 }, fields: [
+    { key: 'outer', label: 'Outer diameter', hint: 'mm', step: 0.5 }, { key: 'quantity', label: 'Quantity', hint: '1–48' }] },
 }
-const GROUPS = ['Structural', 'Round', 'Connectors']
+const GROUPS = ['Structural', 'Round', 'Connectors', 'Joints']
 const LIBRARY: { group: string; items: { kind: Kind; name: string }[] }[] = [
   ...GROUPS.map((group) => ({
     group,
@@ -61,6 +70,9 @@ function describe(p: GridPart, holes: number, pitch: number): [string, string] {
     case 'connector': return [`${p.shape} connector, arm ${p.arm}`, `connector-${p.shape.toLowerCase()}${p.arm}`]
     case 'disc': return [`Disc ø ${(p.diameter * pitch).toFixed(1)} mm`, `disc-${p.diameter}-${p.count}`]
     case 'curved': return [`Curved strip, ${holes} holes`, `curved-r${p.radius}-${p.angle}`]
+    case 'bracket': return [`Corner bracket ${p.cols} × ${p.base} + ${p.height}`, `bracket-${p.cols}-${p.base}-${p.height}`]
+    case 'box': return [`Box ${p.cols} × ${p.rows} × ${p.height}${p.lid === 'open' ? ', open top' : ''}`, `box-${p.cols}x${p.rows}x${p.height}-${p.lid}`]
+    case 'spacer': return [`Spacers ø ${p.outer} mm × ${p.quantity}`, `spacers-${p.outer}x${p.quantity}`]
   }
 }
 const MIXES: { id: HoleMix; name: string }[] = [
@@ -185,7 +197,7 @@ export default function Page() {
             </ul>
           </section>
         ))}
-        <p className="soon">Joints, boxes and mounting plates follow in the next milestones.</p>
+        <p className="soon">Captive nut joints and mounting plates follow in the next milestones.</p>
       </nav>
 
       <main className="stage">
@@ -245,6 +257,7 @@ export default function Page() {
                 ...m!.types.map((t) => [`Hole ø ${HOLES[t].name}`, HOLES[t].d + FIT_OFFSET[fit], false] as const),
                 ['Edge web', m!.edgeWeb, issues.some((i) => i.rule === 'edge-web')],
                 ['Hole web', m!.holeWeb, issues.some((i) => i.rule === 'hole-web')],
+                ...(part.type === 'box' || part.type === 'bracket' ? [['Finger depth', base.thickness, false] as const] : []),
                 [`Min web, ${base.name}`, base.minWeb, false],
               ].map(([k, v, bad]) => (
                 <div key={k as string} className={bad ? 'bad' : ''}><dt>{k}</dt><dd>{mm(v as number)}<u>mm</u></dd></div>

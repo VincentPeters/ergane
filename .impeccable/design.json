@@ -235,6 +235,10 @@
         "displayName": "Body",
         "purpose": "Values, fields, list items, rule copy; tabular figures."
       },
+      "body-sm": {
+        "displayName": "Body small",
+        "purpose": "Secondary lines beside a value: meta line, units, segmented and switch labels, rule lists, coupon note."
+      },
       "label": {
         "displayName": "Label",
         "purpose": "Uppercase inline labels for top-bar controls only."

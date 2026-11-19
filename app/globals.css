@@ -76,7 +76,7 @@ button:disabled { cursor: not-allowed; }
   background: var(--chalk); color: var(--navy); font-weight: 600; font-size: 14px;
   transition: background-color 160ms cubic-bezier(0.16, 1, 0.3, 1);
 }
-.primary:hover:not(:disabled) { background: #fff; }
+.primary:hover:not(:disabled) { filter: brightness(1.06); }
 .primary:disabled { background: var(--line); color: var(--mute); }
 .primary.wide { width: 100%; margin-top: 4px; }
 .link { background: none; border: 0; color: var(--amber); font-size: 14px; padding: 6px 4px; }
