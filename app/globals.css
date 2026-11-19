@@ -205,4 +205,4 @@ dl div.bad dt, dl div.bad dd { color: var(--err); }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 .link.file { position: relative; display: inline-block; align-self: flex-start; cursor: pointer; }
 .link.file input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
-.link.file:focus-within { outline: 2px solid var(--amber); outline-offset: 2px; border-radius: 4px; }
+.link.file:focus-within { outline: 2px solid var(--amber); outline-offset: 2px; border-radius: var(--radius); }
