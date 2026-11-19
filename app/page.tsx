@@ -2,17 +2,67 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import {
-  FIT_OFFSET, HOLES, MATERIALS, PROFILES, RULE_COUNT, bbox, couponKerfs, defaultMix, generate, measure, validate,
-  type Ctx, type Fit, type HoleMix, type Part, type Pattern,
+  ANGLES, FIT_OFFSET, HOLES, MATERIALS, PROFILES, RULE_COUNT, bbox, clampPart, couponKerfs, defaultMix, generate, measure, validate,
+  type Ctx, type Fit, type GridPart, type HoleMix, type Part,
 } from '../src/core/geometry'
 import { toSVG } from '../src/core/svg'
 import { Chart, OwlMark, type Fault } from './Chart'
 
 type Kind = Part['type']
+type ShapeKind = Exclude<Kind, 'coupon'>
+type Value = number | string
+type Field = { key: string; label: string; hint?: string; step?: number; options?: [Value, string][] }
+
+// One description per shape drives the library, the parameter form and the defaults.
+// The core clamps every value, so the form only collects what was typed.
+const SHAPES: Record<ShapeKind, { name: string; group: string; defaults: Record<string, Value>; fields: Field[] }> = {
+  strip: { name: 'Strip', group: 'Structural', defaults: { holes: 11, rows: 1 }, fields: [
+    { key: 'holes', label: 'Holes', hint: '2–50' }, { key: 'rows', label: 'Rows', hint: '1–3' }] },
+  slotted: { name: 'Slotted strip', group: 'Structural', defaults: { holes: 7, slot: 2 }, fields: [
+    { key: 'holes', label: 'Holes', hint: '4–50' }, { key: 'slot', label: 'Slot length', hint: 'pitches' }] },
+  plate: { name: 'Plate', group: 'Structural', defaults: { cols: 5, rows: 5, radius: 2, pattern: 'full' }, fields: [
+    { key: 'cols', label: 'Columns', hint: '2–50' }, { key: 'rows', label: 'Rows', hint: '2–50' },
+    { key: 'radius', label: 'Corner radius', hint: 'mm', step: 0.5 },
+    { key: 'pattern', label: 'Hole pattern', options: [['full', 'Full'], ['border', 'Border'], ['checker', 'Checker']] }] },
+  angle: { name: 'Angle strip', group: 'Structural', defaults: { armA: 5, armB: 5, angle: 90 }, fields: [
+    { key: 'armA', label: 'Arm A', hint: 'holes' }, { key: 'armB', label: 'Arm B', hint: 'holes' },
+    { key: 'angle', label: 'Angle', options: ANGLES.map((a) => [a, `${a}°`]) }] },
+  gusset: { name: 'Gusset', group: 'Structural', defaults: { holes: 4 }, fields: [
+    { key: 'holes', label: 'Holes per leg', hint: '2–25' }] },
+  frame: { name: 'Frame', group: 'Structural', defaults: { cols: 7, rows: 5, border: 1 }, fields: [
+    { key: 'cols', label: 'Columns', hint: '3–50' }, { key: 'rows', label: 'Rows', hint: '3–50' },
+    { key: 'border', label: 'Border', hint: 'holes' }] },
+  connector: { name: 'Connector', group: 'Connectors', defaults: { shape: 'X', arm: 2 }, fields: [
+    { key: 'shape', label: 'Shape', options: [['T', 'T'], ['X', 'X'], ['H', 'H'], ['Y', 'Y']] },
+    { key: 'arm', label: 'Arm length', hint: 'holes' }] },
+  disc: { name: 'Disc', group: 'Round', defaults: { diameter: 5, count: 8 }, fields: [
+    { key: 'diameter', label: 'Diameter', hint: 'pitches' }, { key: 'count', label: 'Ring holes', hint: '3–24' }] },
+  curved: { name: 'Curved strip', group: 'Round', defaults: { radius: 6, angle: 90 }, fields: [
+    { key: 'radius', label: 'Radius', hint: 'pitches' }, { key: 'angle', label: 'Arc', hint: 'degrees' }] },
+}
+const GROUPS = ['Structural', 'Round', 'Connectors']
 const LIBRARY: { group: string; items: { kind: Kind; name: string }[] }[] = [
-  { group: 'Structural', items: [{ kind: 'strip', name: 'Strip' }, { kind: 'plate', name: 'Plate' }] },
+  ...GROUPS.map((group) => ({
+    group,
+    items: (Object.keys(SHAPES) as ShapeKind[]).filter((k) => SHAPES[k].group === group).map((kind) => ({ kind, name: SHAPES[kind].name })),
+  })),
   { group: 'Calibration', items: [{ kind: 'coupon', name: 'Coupon' }] },
 ]
+
+// Screen title and export file name for a clamped part.
+function describe(p: GridPart, holes: number, pitch: number): [string, string] {
+  switch (p.type) {
+    case 'strip': return [`Strip, ${p.holes} holes`, `strip-${p.holes}`]
+    case 'slotted': return [`Slotted strip, ${p.holes} holes`, `slotted-${p.holes}-${p.slot}`]
+    case 'plate': return [`Plate ${p.cols} × ${p.rows}`, `plate-${p.cols}x${p.rows}`]
+    case 'angle': return [`Angle strip ${p.armA} + ${p.armB}, ${p.angle}°`, `angle-${p.armA}-${p.armB}-${p.angle}`]
+    case 'gusset': return [`Gusset, ${p.holes} per leg`, `gusset-${p.holes}`]
+    case 'frame': return [`Frame ${p.cols} × ${p.rows}`, `frame-${p.cols}x${p.rows}`]
+    case 'connector': return [`${p.shape} connector, arm ${p.arm}`, `connector-${p.shape.toLowerCase()}${p.arm}`]
+    case 'disc': return [`Disc ø ${(p.diameter * pitch).toFixed(1)} mm`, `disc-${p.diameter}-${p.count}`]
+    case 'curved': return [`Curved strip, ${holes} holes`, `curved-r${p.radius}-${p.angle}`]
+  }
+}
 const MIXES: { id: HoleMix; name: string }[] = [
   { id: 'all-m3', name: 'All M3' },
   { id: 'all-technic', name: 'All Technic' },
@@ -29,14 +79,13 @@ function saveKerfs(k: Record<string, number>) {
   try { localStorage.setItem(KERF_KEY, JSON.stringify(k)) } catch { /* not persisted, still works */ }
 }
 
-// Number inputs keep what the user types; values are clamped only when building the part.
-const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, Math.round(v) || min))
 const mm = (v: number) => (Number.isFinite(v) ? v.toFixed(2) : '–')
 
 export default function Page() {
   const [kind, setKind] = useState<Kind>('strip')
-  const [strip, setStrip] = useState({ holes: 11, rows: 1 })
-  const [plate, setPlate] = useState({ cols: 5, rows: 5, pattern: 'full' as Pattern, radius: 2 })
+  // Inputs keep what the user types (even half-typed values); the core clamps when building the part.
+  const [params, setParams] = useState(() =>
+    Object.fromEntries((Object.keys(SHAPES) as ShapeKind[]).map((k) => [k, { ...SHAPES[k].defaults }])) as Record<ShapeKind, Record<string, Value>>)
   const [label, setLabel] = useState(true)
   const [profileId, setProfileId] = useState(PROFILES[0].id)
   const [mix, setMix] = useState<HoleMix>('all-m3')
@@ -60,10 +109,8 @@ export default function Page() {
     saveKerfs(next)
   }
 
-  const part: Part =
-    kind === 'strip' ? { type: 'strip', holes: clamp(strip.holes, 2, 50), rows: clamp(strip.rows, 1, 3), label }
-    : kind === 'plate' ? { type: 'plate', cols: clamp(plate.cols, 2, 50), rows: clamp(plate.rows, 2, 50), pattern: plate.pattern, radius: Math.max(0, plate.radius || 0), label }
-    : { type: 'coupon' }
+  const part: Part = kind === 'coupon' ? { type: 'coupon' } : clampPart({ type: kind, ...params[kind], label } as Part)
+  const setParam = (key: string, v: Value) => kind !== 'coupon' && setParams({ ...params, [kind]: { ...params[kind], [key]: v } })
   const ctx: Ctx = { profile, material: { ...base, kerf }, fit, holeMix: mix }
 
   const key = JSON.stringify([part, ctx])
@@ -80,8 +127,8 @@ export default function Page() {
   const outer = bbox(paths.filter((p) => p.op === 'outer'))
   const nominal = m ?? { w: outer.w - kerf, h: outer.h - kerf }
   const holeCount = paths.filter((p) => p.shape.kind === 'circle').length
-  const title = part.type === 'strip' ? `Strip, ${part.holes} holes` : part.type === 'plate' ? `Plate ${part.cols} × ${part.rows}` : 'Calibration coupon'
-  const file = part.type === 'strip' ? `strip-${part.holes}` : part.type === 'plate' ? `plate-${part.cols}x${part.rows}` : `coupon-${materialId}`
+  const [title, file] = part.type === 'coupon' ? ['Calibration coupon', `coupon-${materialId}`] : describe(part, holeCount, profile.pitch)
+  const elongated = part.type === 'strip' || part.type === 'slotted'
 
   const download = () => {
     const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }))
@@ -138,7 +185,7 @@ export default function Page() {
             </ul>
           </section>
         ))}
-        <p className="soon">Slotted strips, angles, joints and mounting plates follow in the next milestones.</p>
+        <p className="soon">Joints, boxes and mounting plates follow in the next milestones.</p>
       </nav>
 
       <main className="stage">
@@ -156,7 +203,7 @@ export default function Page() {
           </label>
         </div>
         <Chart paths={paths} nominal={nominal} pitch={profile.pitch} kerf={kerf} laser={laser} zoom={zoom}
-          annotate={part.type !== 'coupon'} faults={faults} />
+          annotate={part.type !== 'coupon'} faults={faults} corner={m?.corner ?? 3} />
       </main>
 
       <aside className="form" aria-label="Parameters">
@@ -167,23 +214,18 @@ export default function Page() {
         ) : (
           <>
             <h2 className="it">Parameters</h2>
-            {kind === 'strip' ? (
-              <>
-                <Num label="Holes" hint="2–50" value={strip.holes} onChange={(holes) => setStrip({ ...strip, holes })} />
-                <Num label="Rows" hint="1–3" value={strip.rows} onChange={(rows) => setStrip({ ...strip, rows })} />
-              </>
-            ) : (
-              <>
-                <Num label="Columns" hint="2–50" value={plate.cols} onChange={(cols) => setPlate({ ...plate, cols })} />
-                <Num label="Rows" hint="2–50" value={plate.rows} onChange={(rows) => setPlate({ ...plate, rows })} />
-                <Num label="Corner radius" hint="mm" step={0.5} value={plate.radius} onChange={(radius) => setPlate({ ...plate, radius })} />
-                <label className="row">Hole pattern
-                  <select value={plate.pattern} onChange={(e) => setPlate({ ...plate, pattern: e.target.value as Pattern })}>
-                    <option value="full">Full</option><option value="border">Border</option><option value="checker">Checker</option>
+            {SHAPES[part.type].fields.map((f) => {
+              const v = params[part.type][f.key]
+              return f.options ? (
+                <label key={f.key} className="row">{f.label}
+                  <select value={String(v)} onChange={(e) => setParam(f.key, e.target.value)}>
+                    {f.options.map(([o, name]) => <option key={o} value={o}>{name}</option>)}
                   </select>
                 </label>
-              </>
-            )}
+              ) : (
+                <Num key={f.key} label={f.label} hint={f.hint ?? ''} step={f.step} value={Number(v)} onChange={(n) => setParam(f.key, n)} />
+              )
+            })}
             {profile.mixable && (
               <label className="row">Hole mix
                 <select value={mix} onChange={(e) => setMix(e.target.value as HoleMix)}>
@@ -198,8 +240,8 @@ export default function Page() {
             <h2 className="it">Measured</h2>
             <dl>
               {[
-                ['Length', m!.w, false],
-                ['Width', m!.h, false],
+                [elongated ? 'Length' : 'Width', m!.w, false],
+                [elongated ? 'Width' : 'Height', m!.h, false],
                 ...m!.types.map((t) => [`Hole ø ${HOLES[t].name}`, HOLES[t].d + FIT_OFFSET[fit], false] as const),
                 ['Edge web', m!.edgeWeb, issues.some((i) => i.rule === 'edge-web')],
                 ['Hole web', m!.holeWeb, issues.some((i) => i.rule === 'hole-web')],

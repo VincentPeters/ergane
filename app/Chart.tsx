@@ -21,12 +21,13 @@ export type ChartProps = {
   zoom: 'fit' | 'true'
   annotate: boolean // rulers, dimensions, leaders and the figure; off for the coupon
   faults: Fault[]
+  corner: number // outline corner radius, so the selection ring follows the part
 }
 
 // Rounded so server and browser render identical attributes (Math.cos differs in the last digits).
 const r4 = (n: number) => Math.round(n * 1e4) / 1e4
 
-export function Chart({ paths, nominal, pitch, kerf, laser, zoom, annotate, faults }: ChartProps) {
+export function Chart({ paths, nominal, pitch, kerf, laser, zoom, annotate, faults, corner }: ChartProps) {
   const ref = useRef<HTMLDivElement>(null)
   const [box, setBox] = useState({ w: 0, h: 0 })
 
@@ -62,8 +63,6 @@ export function Chart({ paths, nominal, pitch, kerf, laser, zoom, annotate, faul
   const px = pxPerMm(vb)
   const fs = r4(1.15 * u)
 
-  const outline = paths.find((p) => p.op === 'outer')?.shape
-  const corner = outline?.kind === 'poly' ? Math.max(0, raw.x + raw.w - outline.pts[0][0]) : 0
   const circles = paths.flatMap((p) => (p.shape.kind === 'circle' ? [p.shape] : []))
   const ink = (op: Path['op']) => (laser ? LASER[op] : op === 'engrave' ? 'var(--chalk-dim)' : 'var(--chalk)')
 
@@ -77,21 +76,29 @@ export function Chart({ paths, nominal, pitch, kerf, laser, zoom, annotate, faul
     if ((len - out[out.length - 1]) * px >= 24) out.push(r4(len))
     return out
   }
+  const tickLabel = (v: number) => String(Number(v.toFixed(1)))
 
-  // Constellation lines: hole centres joined along each row.
-  const rows = new Map<number, number[]>()
-  for (const c of circles) rows.set(r4(c.cy), [...(rows.get(r4(c.cy)) ?? []), c.cx])
-  const constellation = [...rows].filter(([, xs]) => xs.length > 1)
-    .map(([y, xs]) => `M${Math.min(...xs)} ${y}H${Math.max(...xs)}`).join('')
+  // Constellation lines: every pair of holes exactly one pitch apart, so arms, arcs and rings
+  // are traced along their real neighbours, never across open space. Sorted by x for a short sweep.
+  const byX = [...circles].sort((a, b) => a.cx - b.cx)
+  let constellation = ''
+  for (let i = 0; i < byX.length; i++)
+    for (let j = i + 1; j < byX.length && byX[j].cx - byX[i].cx <= pitch + 0.01; j++)
+      if (Math.abs(Math.hypot(byX[j].cx - byX[i].cx, byX[j].cy - byX[i].cy) - pitch) < 0.01)
+        constellation += `M${r4(byX[i].cx)} ${r4(byX[i].cy)}L${r4(byX[j].cx)} ${r4(byX[j].cy)}`
 
+  // Notes above the part only point at holes in its top row, so leaders never cross the part.
+  const topY = Math.min(...circles.map((c) => r4(c.cy)))
+  const topRow = circles.filter((c) => r4(c.cy) === topY).sort((a, b) => a.cx - b.cx)
   // One ø leader per distinct hole size, which doubles as the magnitude key on mixed parts.
   const bySize = new Map<number, (typeof circles)[number]>()
-  for (const c of circles) if (!bySize.has(r4(c.r))) bySize.set(r4(c.r), c) // first hole of each size
+  for (const c of topRow) if (!bySize.has(r4(c.r))) bySize.set(r4(c.r), c) // first hole of each size
   const leaders = [...bySize.values()].slice(0, 2)
-  // Pitch note on the middle pair: the label owns holes 1–2, leaders the first holes, faults the last.
-  const firstRow = circles.filter((c) => r4(c.cy) === r4(circles[0]?.cy ?? 0))
-  const mid = Math.max(1, Math.floor(firstRow.length / 2))
-  const [p1, p2] = firstRow.slice(mid - 1, mid + 1)
+  // Pitch note on the middle pair of the top row, and only when that pair really is one pitch apart:
+  // the label owns holes 1–2, leaders the first holes, faults the last.
+  const mid = Math.max(1, Math.floor(topRow.length / 2))
+  const [p1, p2] = topRow.slice(mid - 1, mid + 1)
+  const pitchPair = p1 && p2 && Math.abs(p2.cx - p1.cx - pitch) < 0.01
 
   const size = zoom === 'true' ? { width: `${vb.w}mm`, height: `${vb.h}mm` } : undefined
 
@@ -112,11 +119,11 @@ export function Chart({ paths, nominal, pitch, kerf, laser, zoom, annotate, faul
           <g className="ruler" fontSize={fs}>
             <path d={`M0 ${-6 * u}H${nominal.w}`} />
             {marks(nominal.w).map((x) => (
-              <g key={x}><path d={`M${x} ${-6 * u}v${-u}`} /><text x={x} y={-7.6 * u} textAnchor="middle">{x}</text></g>
+              <g key={x}><path d={`M${x} ${-6 * u}v${-u}`} /><text x={x} y={-7.6 * u} textAnchor="middle">{tickLabel(x)}</text></g>
             ))}
             <path d={`M${-6 * u} 0V${nominal.h}`} />
             {marks(nominal.h).map((y) => (
-              <g key={y}><path d={`M${-6 * u} ${y}h${-u}`} /><text x={-7.6 * u} y={y + fs / 3} textAnchor="end">{y}</text></g>
+              <g key={y}><path d={`M${-6 * u} ${y}h${-u}`} /><text x={-7.6 * u} y={y + fs / 3} textAnchor="end">{tickLabel(y)}</text></g>
             ))}
           </g>
         )}
@@ -142,7 +149,7 @@ export function Chart({ paths, nominal, pitch, kerf, laser, zoom, annotate, faul
             <text x={nominal.w / 2} y={nominal.h + 4.4 * u} textAnchor="middle">{nominal.w.toFixed(2)}</text>
             <path d={`M${nominal.w + 2 * u} 0h${4 * u}M${nominal.w + 2 * u} ${nominal.h}h${4 * u}M${nominal.w + 5 * u} 0V${nominal.h}`} />
             <text x={nominal.w + 6 * u} y={nominal.h / 2 + fs / 3}>{nominal.h.toFixed(2)}</text>
-            {full && p1 && p2 && p2.cx !== p1.cx && (
+            {full && pitchPair && (
               <>
                 <path d={`M${p1.cx} ${p1.cy - p1.r - u}V${-2.4 * u}M${p2.cx} ${p2.cy - p2.r - u}V${-2.4 * u}M${p1.cx} ${-3 * u}H${p2.cx}`} />
                 <text x={(p1.cx + p2.cx) / 2} y={-3.6 * u} textAnchor="middle">{pitch} pitch</text>

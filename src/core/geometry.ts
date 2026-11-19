@@ -1,12 +1,13 @@
 // Geometry core. Plain TypeScript, no React: the UI, exporters and a future CLI share it.
 // Units are mm. Coordinates follow SVG: x right, y down, origin at the nominal outline's top-left.
 import { text, textWidth } from './font'
+import { circle, closestSegSeg, inside, roundedBox, roundedConvex, sector, stadium, union, type Pt } from './shapes'
 
 export type Op = 'engrave' | 'inner' | 'outer'
 export type Shape =
   | { kind: 'circle'; cx: number; cy: number; r: number }
-  | { kind: 'poly'; pts: [number, number][] } // closed, arcs flattened
-  | { kind: 'line'; pts: [number, number][] } // open, engrave strokes
+  | { kind: 'poly'; pts: Pt[] } // closed, arcs flattened
+  | { kind: 'line'; pts: Pt[] } // open, engrave strokes
 export type Path = { op: Op; shape: Shape }
 
 // Nominal hole sizes and the strip width each needs. See spec 3.2 for the 12 mm Technic width.
@@ -40,44 +41,204 @@ export type Fit = 'loose' | 'normal' | 'tight'
 export const FIT_OFFSET: Record<Fit, number> = { loose: 0.2, normal: 0, tight: -0.1 }
 
 export type Pattern = 'full' | 'border' | 'checker'
+export type ConnectorShape = 'T' | 'X' | 'H' | 'Y'
+export const ANGLES = [45, 60, 90, 120, 135] as const
+
 export type Part =
   | { type: 'strip'; holes: number; rows: number; label?: boolean }
+  | { type: 'slotted'; holes: number; slot: number; label?: boolean }
   | { type: 'plate'; cols: number; rows: number; pattern: Pattern; radius: number; label?: boolean }
+  | { type: 'angle'; armA: number; armB: number; angle: number; label?: boolean }
+  | { type: 'gusset'; holes: number; label?: boolean }
+  | { type: 'frame'; cols: number; rows: number; border: number; label?: boolean }
+  | { type: 'connector'; shape: ConnectorShape; arm: number; label?: boolean }
+  | { type: 'disc'; diameter: number; count: number; label?: boolean }
+  | { type: 'curved'; radius: number; angle: number; label?: boolean }
   | { type: 'coupon' }
 export type GridPart = Exclude<Part, { type: 'coupon' }>
 
 export type Ctx = { profile: Profile; material: Material; fit: Fit; holeMix?: HoleMix }
 
-type Hole = { x: number; y: number; i: number; j: number; type: HoleType }
-type Layout = { w: number; h: number; r: number; holes: Hole[] }
+// Part parameters arrive from forms, files and URLs; clamp them here so no caller can build a broken part.
+const int = (v: unknown, lo: number, hi: number) => {
+  const n = Math.round(Number(v))
+  return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : lo
+}
+const num = (v: unknown, lo: number, hi: number) => {
+  const n = Number(v)
+  return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : lo
+}
+export function clampPart(part: Part): Part {
+  switch (part.type) {
+    case 'strip': return { ...part, holes: int(part.holes, 2, 50), rows: int(part.rows, 1, 3) }
+    case 'slotted': {
+      const holes = int(part.holes, 4, 50)
+      return { ...part, holes, slot: int(part.slot, 1, holes - 3) }
+    }
+    case 'plate': return {
+      ...part, cols: int(part.cols, 2, 50), rows: int(part.rows, 2, 50), radius: num(part.radius, 0, 50),
+      pattern: (['full', 'border', 'checker'] as const).includes(part.pattern) ? part.pattern : 'full',
+    }
+    case 'angle': {
+      const angle = Number(part.angle)
+      return { ...part, armA: int(part.armA, 2, 25), armB: int(part.armB, 2, 25), angle: (ANGLES as readonly number[]).includes(angle) ? angle : 90 }
+    }
+    case 'gusset': return { ...part, holes: int(part.holes, 2, 25) }
+    case 'frame': {
+      const border = int(part.border, 1, 5)
+      return { ...part, border, cols: int(part.cols, 2 * border + 1, 50), rows: int(part.rows, 2 * border + 1, 50) }
+    }
+    case 'connector': return { ...part, shape: (['T', 'X', 'H', 'Y'] as const).includes(part.shape) ? part.shape : 'X', arm: int(part.arm, 1, 12) }
+    case 'disc': return { ...part, diameter: int(part.diameter, 3, 40), count: int(part.count, 3, 24) }
+    case 'curved': return { ...part, radius: int(part.radius, 2, 60), angle: int(part.angle, 10, 270) }
+    case 'coupon': return part
+  }
+}
 
-// Nominal part before any fit or kerf correction.
-function layout(part: GridPart, ctx: Ctx): Layout {
-  const { pitch } = ctx.profile
-  const cols = part.type === 'strip' ? part.holes : part.cols
-  const rows = part.rows
+/** A hole (a equals b) or a slot (a to b), cut at the hole type's diameter. */
+type Feature = { a: Pt; b: Pt; type: HoleType }
+/** Outlines and features of a part. Outer rings grow by g, inner cutouts shrink by g. */
+type Geo = { outer: Pt[][]; inner: Pt[][]; features: Feature[]; corner: number; label: string }
+
+function build(part: GridPart, ctx: Ctx, g: number): Geo {
+  const p = ctx.profile.pitch
   const mix = ctx.profile.mixable ? (ctx.holeMix ?? defaultMix(ctx.profile)) : null
-  const typeAt = (i: number, j: number): HoleType => {
+  const typeAt = (k: number, border: boolean): HoleType => {
     if (!mix) return ctx.profile.hole
-    const border = i === 0 || j === 0 || i === cols - 1 || j === rows - 1
-    if (mix === 'alternating') return (i + j) % 2 ? 'm3' : 'technic'
+    if (mix === 'alternating') return k % 2 ? 'm3' : 'technic'
     if (mix === 'border-technic') return border ? 'technic' : 'm3'
     return mix === 'all-technic' ? 'technic' : 'm3'
   }
-  const keep = (i: number, j: number) =>
-    part.type === 'strip' || part.pattern === 'full' ? true
-    : part.pattern === 'border' ? i === 0 || j === 0 || i === cols - 1 || j === rows - 1
-    : (i + j) % 2 === 0
-  const grid: { i: number; j: number; type: HoleType }[] = []
-  for (let j = 0; j < rows; j++)
-    for (let i = 0; i < cols; i++) if (keep(i, j)) grid.push({ i, j, type: typeAt(i, j) })
-  // The widest hole type in use sets the strip width; edge margin is half of it.
-  const m = Math.max(...grid.map((g) => HOLES[g.type].width)) / 2
+  const hole = (x: number, y: number, k: number, border = true): Feature => ({ a: [x, y], b: [x, y], type: typeAt(k, border) })
+  // The widest hole type in use sets the strip width; the edge margin is half of it.
+  const half = (fs: Feature[]) => Math.max(...fs.map((f) => HOLES[f.type].width)) / 2
+  // Positions that do not sit on the grid (rings, arcs) are placed for the widest type the mix can use.
+  const mixTypes: HoleType[] = !mix ? [ctx.profile.hole] : mix === 'all-m3' ? ['m3'] : mix === 'all-technic' ? ['technic'] : ['m3', 'technic']
+  const mMax = Math.max(...mixTypes.map((t) => HOLES[t].width)) / 2
+  const grid = (cols: number, rows: number, keep: (i: number, j: number) => boolean) => {
+    const fs: Feature[] = []
+    for (let j = 0; j < rows; j++)
+      for (let i = 0; i < cols; i++)
+        if (keep(i, j)) fs.push(hole(i * p, j * p, i + j, i === 0 || j === 0 || i === cols - 1 || j === rows - 1))
+    return fs
+  }
+
+  switch (part.type) {
+    case 'strip': {
+      const fs = grid(part.holes, part.rows, () => true)
+      const m = half(fs)
+      return { features: fs, outer: [roundedBox(0, 0, (part.holes - 1) * p, (part.rows - 1) * p, m + g)], inner: [], corner: m, label: `${part.holes}` }
+    }
+    case 'slotted': {
+      // One slot centred on the strip, a hole at every grid position outside it.
+      const n = part.holes, s = part.slot, a = Math.floor((n - 1 - s) / 2)
+      const fs = grid(n, 1, (i) => i < a || i > a + s)
+      fs.push({ a: [a * p, 0], b: [(a + s) * p, 0], type: typeAt(a, true) })
+      const m = half(fs)
+      return { features: fs, outer: [stadium([0, 0], [(n - 1) * p, 0], m + g)], inner: [], corner: m, label: `S${n}` }
+    }
+    case 'plate': {
+      const { cols, rows, pattern } = part
+      const fs = grid(cols, rows, (i, j) =>
+        pattern === 'full' ? true : pattern === 'border' ? i === 0 || j === 0 || i === cols - 1 || j === rows - 1 : (i + j) % 2 === 0)
+      const m = half(fs), W = (cols - 1) * p, H = (rows - 1) * p
+      const R = Math.min(part.radius, (Math.min(W, H) + 2 * m) / 2)
+      return {
+        features: fs, inner: [], corner: R, label: `${cols}x${rows}`,
+        outer: [roundedBox(-m + R, -m + R, W + m - R, H + m - R, R + g)],
+      }
+    }
+    case 'angle': {
+      // Arm A runs right from the pivot hole, arm B rises at the chosen angle; both share the pivot.
+      const t = (part.angle * Math.PI) / 180
+      const dir: Pt = [Math.cos(t), -Math.sin(t)]
+      const fs = [hole(0, 0, 0)]
+      for (let i = 1; i < part.armA; i++) fs.push(hole(i * p, 0, i))
+      for (let j = 1; j < part.armB; j++) fs.push(hole(j * p * dir[0], j * p * dir[1], j))
+      const m = half(fs)
+      const endB: Pt = [(part.armB - 1) * p * dir[0], (part.armB - 1) * p * dir[1]]
+      const u = union([stadium([0, 0], [(part.armA - 1) * p, 0], m + g), stadium([0, 0], endB, m + g)])
+      return { features: fs, outer: u.outer, inner: u.holes, corner: m, label: `${part.angle}` }
+    }
+    case 'gusset': {
+      // Right-angled corner brace: holes along both legs, the long side stays solid.
+      const n = part.holes
+      const fs = [...grid(n, 1, () => true), ...grid(1, n, (_, j) => j > 0)]
+      const m = half(fs)
+      return { features: fs, outer: [roundedConvex([[0, 0], [(n - 1) * p, 0], [0, (n - 1) * p]], m + g)], inner: [], corner: m, label: `G${n}` }
+    }
+    case 'frame': {
+      const { cols, rows, border: b } = part
+      const fs = grid(cols, rows, (i, j) => i < b || j < b || i >= cols - b || j >= rows - b)
+      const m = half(fs), W = (cols - 1) * p, H = (rows - 1) * p
+      // The window keeps one edge margin clear of the innermost holes; the cut shrinks it by g.
+      const wr = 2
+      const x0 = (b - 1) * p + m, y0 = x0, x1 = (cols - b) * p - m, y1 = (rows - b) * p - m
+      return {
+        features: fs, corner: m, label: `F${cols}x${rows}`,
+        outer: [roundedBox(0, 0, W, H, m + g)],
+        inner: [roundedBox(x0 + wr, y0 + wr, x1 - wr, y1 - wr, Math.max(0, wr - g))],
+      }
+    }
+    case 'connector': {
+      const a = part.arm
+      const y30: Pt = [Math.cos(Math.PI / 6), Math.sin(Math.PI / 6)]
+      const segs: [Pt, Pt][] = {
+        X: [[[-a, 0], [a, 0]], [[0, -a], [0, a]]] as [Pt, Pt][],
+        T: [[[-a, 0], [a, 0]], [[0, 0], [0, a]]] as [Pt, Pt][],
+        H: [[[0, -a], [0, a]], [[a + 1, -a], [a + 1, a]], [[0, 0], [a + 1, 0]]] as [Pt, Pt][],
+        Y: [[[0, 0], [0, -a]], [[0, 0], [-y30[0] * a, y30[1] * a]], [[0, 0], [y30[0] * a, y30[1] * a]]] as [Pt, Pt][],
+      }[part.shape]
+      // One hole per pitch along every arm; shared crossings appear once.
+      const seen = new Map<string, Feature>()
+      for (const [s, e] of segs) {
+        const steps = Math.round(Math.hypot(e[0] - s[0], e[1] - s[1]))
+        for (let k = 0; k <= steps; k++) {
+          const x = (s[0] + ((e[0] - s[0]) * k) / steps) * p, y = (s[1] + ((e[1] - s[1]) * k) / steps) * p
+          const key = `${Math.round(x * 1e3)},${Math.round(y * 1e3)}`
+          if (!seen.has(key)) seen.set(key, hole(x, y, Math.round(Math.abs(x) / p + Math.abs(y) / p)))
+        }
+      }
+      const fs = [...seen.values()]
+      const m = half(fs)
+      const u = union(segs.map(([s, e]) => stadium([s[0] * p, s[1] * p], [e[0] * p, e[1] * p], m + g)))
+      return { features: fs, outer: u.outer, inner: u.holes, corner: m, label: `${part.shape}${a}` }
+    }
+    case 'disc': {
+      // Centre hole plus a ring of holes one edge margin inside the rim.
+      const R = (part.diameter * p) / 2, Rh = R - mMax
+      const fs = [hole(0, 0, 0, false)]
+      for (let k = 0; k < part.count; k++) {
+        const t = (2 * Math.PI * k) / part.count - Math.PI / 2
+        fs.push(hole(Rh * Math.cos(t), Rh * Math.sin(t), k + 1, true))
+      }
+      return { features: fs, outer: [circle([0, 0], R + g)], inner: [], corner: R, label: `D${part.diameter}` }
+    }
+    case 'curved': {
+      // Holes on the centre arc one pitch apart as a straight line (chord), so they bolt to straight parts.
+      const R = part.radius * p
+      const step = 2 * Math.asin(Math.min(1, p / (2 * R)))
+      const n = Math.max(2, Math.floor((part.angle * Math.PI) / 180 / step + 1e-9) + 1)
+      const a0 = -Math.PI / 2 - ((n - 1) * step) / 2
+      const fs = Array.from({ length: n }, (_, k) => hole(R * Math.cos(a0 + k * step), R * Math.sin(a0 + k * step), k))
+      const m = half(fs)
+      return { features: fs, outer: [sector([0, 0], R, m + g, a0, a0 + (n - 1) * step)], inner: [], corner: m, label: `R${part.radius}` }
+    }
+  }
+}
+
+// Builds the nominal part (grow 0) and moves it so its outline starts at (0, 0); `g` builds the cut version.
+function placed(part: GridPart, ctx: Ctx, g: number): Geo {
+  const nominal = build(part, ctx, 0)
+  let ox = Infinity, oy = Infinity
+  for (const poly of nominal.outer) for (const [x, y] of poly) { ox = Math.min(ox, x); oy = Math.min(oy, y) }
+  const geo = g === 0 ? nominal : build(part, ctx, g)
+  const mv = (q: Pt): Pt => [q[0] - ox, q[1] - oy]
   return {
-    w: (cols - 1) * pitch + 2 * m,
-    h: (rows - 1) * pitch + 2 * m,
-    r: part.type === 'strip' ? m : part.radius,
-    holes: grid.map((g) => ({ ...g, x: m + g.i * pitch, y: m + g.j * pitch })),
+    ...geo,
+    outer: geo.outer.map((poly) => poly.map(mv)),
+    inner: geo.inner.map((poly) => poly.map(mv)),
+    features: geo.features.map((f) => ({ ...f, a: mv(f.a), b: mv(f.b) })),
   }
 }
 
@@ -87,37 +248,41 @@ export function holeRadius(nominal: number, fit: Fit, kerf: number) {
   return (nominal + FIT_OFFSET[fit]) / 2 - kerf / 2
 }
 
-const outline = (w: number, h: number, r: number, kerf: number): Path => {
-  const k = kerf / 2
-  return { op: 'outer', shape: { kind: 'poly', pts: roundedRect(-k, -k, w + 2 * k, h + 2 * k, r + k) } }
-}
 const engrave = (s: string, cx: number, cy: number, h: number): Path[] =>
   text(s, cx, cy, h).map((pts) => ({ op: 'engrave', shape: { kind: 'line', pts } }))
 
 export function generate(part: Part, ctx: Ctx): Path[] {
   if (part.type === 'coupon') return coupon(ctx)
-  const L = layout(part, ctx)
+  const q = clampPart(part) as GridPart
   const kerf = ctx.material.kerf
-  const paths: Path[] = L.holes.map((h) => ({
-    op: 'inner',
-    shape: { kind: 'circle', cx: h.x, cy: h.y, r: holeRadius(HOLES[h.type].d, ctx.fit, kerf) },
-  }))
-  if (part.label) paths.push(...label(part, L, ctx))
-  paths.push(outline(L.w, L.h, L.r, kerf))
+  const geo = placed(q, ctx, kerf / 2)
+  const paths: Path[] = geo.features.map((f): Path => {
+    const r = holeRadius(HOLES[f.type].d, ctx.fit, kerf)
+    return f.a[0] === f.b[0] && f.a[1] === f.b[1]
+      ? { op: 'inner', shape: { kind: 'circle', cx: f.a[0], cy: f.a[1], r } }
+      : { op: 'inner', shape: { kind: 'poly', pts: stadium(f.a, f.b, r) } }
+  })
+  for (const pts of geo.inner) paths.push({ op: 'inner', shape: { kind: 'poly', pts } })
+  if (q.label) paths.push(...label(geo, ctx))
+  for (const pts of geo.outer) paths.push({ op: 'outer', shape: { kind: 'poly', pts } })
   return paths
 }
 
 const LABEL_H = 2.5 // max cap height, mm
 const LABEL_CLEAR = 0.8 // gap between text and hole edge, mm, so the label never reads as touching a ring
 
-// Engraved between the first two holes of the first row, shrunk to fit the gap. Skipped below 1 mm.
-function label(part: GridPart, L: Layout, ctx: Ctx): Path[] {
-  const s = part.type === 'strip' ? String(part.holes) : `${part.cols}x${part.rows}`
-  const [a, b] = L.holes
-  if (!b || b.j !== 0) return []
-  const gap = b.x - a.x - (HOLES[a.type].d + HOLES[b.type].d) / 2 - 2 * LABEL_CLEAR
-  const h = Math.min(LABEL_H, (LABEL_H * gap) / textWidth(s, LABEL_H))
-  return h < 1 ? [] : engrave(s, (a.x + b.x) / 2, a.y, h)
+// Engraved between the first two side-by-side holes one pitch apart, shrunk to fit. Skipped below 1 mm.
+function label(geo: Geo, ctx: Ctx): Path[] {
+  const p = ctx.profile.pitch
+  const holes = geo.features.filter((f) => f.a[0] === f.b[0] && f.a[1] === f.b[1])
+  for (const a of holes) {
+    const b = holes.find((h) => Math.abs(h.a[1] - a.a[1]) < 1e-6 && Math.abs(h.a[0] - a.a[0] - p) < 1e-6)
+    if (!b) continue
+    const gap = p - (HOLES[a.type].d + HOLES[b.type].d) / 2 - 2 * LABEL_CLEAR
+    const h = Math.min(LABEL_H, (LABEL_H * gap) / textWidth(geo.label, LABEL_H))
+    return h < 1 ? [] : engrave(geo.label, a.a[0] + p / 2, a.a[1], h)
+  }
+  return []
 }
 
 // Calibration coupon: 7 holes per hole type, each cut with a candidate kerf 0.05 mm apart.
@@ -142,7 +307,8 @@ function coupon(ctx: Ctx): Path[] {
       paths.push(...engrave(k.toFixed(2), x, y + 5.5, 2.2))
     })
   })
-  paths.push(outline(gutter + 5 + 6 * col + 6, top + (types.length - 1) * row + 9, 3, ctx.material.kerf))
+  const w = gutter + 5 + 6 * col + 6, h = top + (types.length - 1) * row + 9, r = 3, g = ctx.material.kerf / 2
+  paths.push({ op: 'outer', shape: { kind: 'poly', pts: roundedBox(r, r, w - r, h - r, r + g) } })
   return paths
 }
 
@@ -156,106 +322,96 @@ export type Span = [number, number, number, number]
 export type Measure = {
   w: number; h: number; holeWeb: number; edgeWeb: number; types: HoleType[]
   holeSpan: Span | null; edgeSpan: Span | null // where the smallest webs are, for drawing failures
+  corner: number // outline corner radius, for the selection ring
 }
 
-// Webs are measured on the hole as cut (nominal + fit); kerf correction cancels out after cutting.
+// Webs are measured on holes as cut (nominal + fit); kerf correction cancels out after cutting.
+// On ties the last pair in reading order wins, keeping a drawn fault away from the label near hole 1.
 export function measure(part: GridPart, ctx: Ctx): Measure {
-  const L = layout(part, ctx)
-  const dia = (h: Hole) => HOLES[h.type].d + FIT_OFFSET[ctx.fit]
-  const at = new Map(L.holes.map((h) => [`${h.i},${h.j}`, h]))
-  let holeWeb = Infinity, edgeWeb = Infinity
-  let holeSpan: Span | null = null, edgeSpan: Span | null = null
-  for (const h of L.holes) {
-    // Nearest holes on a grid are the four forward neighbours (diagonals matter for checker).
-    for (const [di, dj] of [[1, 0], [0, 1], [1, 1], [1, -1]]) {
-      const n = at.get(`${h.i + di},${h.j + dj}`)
-      if (!n) continue
-      const dist = Math.hypot(n.x - h.x, n.y - h.y)
-      const web = dist - (dia(h) + dia(n)) / 2
-      // On ties the last pair wins, keeping the drawn fault away from the label between holes 1 and 2.
-      if (web <= holeWeb + 1e-9) {
-        const ux = (n.x - h.x) / dist, uy = (n.y - h.y) / dist
+  const geo = placed(clampPart(part) as GridPart, ctx, 0)
+  const fs = geo.features
+    .map((f) => {
+      const d = HOLES[f.type].d + FIT_OFFSET[ctx.fit]
+      return { ...f, d, x0: Math.min(f.a[0], f.b[0]) - d / 2, x1: Math.max(f.a[0], f.b[0]) + d / 2, y0: Math.min(f.a[1], f.b[1]) - d / 2, y1: Math.max(f.a[1], f.b[1]) + d / 2 }
+    })
+    .sort((u, v) => u.x0 - v.x0 || u.y0 - v.y0)
+
+  let holeWeb = Infinity, holeSpan: Span | null = null
+  for (let i = 0; i < fs.length; i++)
+    for (let j = i + 1; j < fs.length; j++) {
+      if (fs[j].x0 - fs[i].x1 > holeWeb + 1e-9) break // sorted by x: nothing further right can be closer
+      const [pa, pb, dist] = closestSegSeg(fs[i].a, fs[i].b, fs[j].a, fs[j].b)
+      const web = dist - (fs[i].d + fs[j].d) / 2
+      if (web <= holeWeb + 1e-9 && dist > 0) {
+        const ux = (pb[0] - pa[0]) / dist, uy = (pb[1] - pa[1]) / dist
         holeWeb = Math.min(holeWeb, web)
-        holeSpan = [h.x + (ux * dia(h)) / 2, h.y + (uy * dia(h)) / 2, n.x - (ux * dia(n)) / 2, n.y - (uy * dia(n)) / 2]
+        holeSpan = [pa[0] + (ux * fs[i].d) / 2, pa[1] + (uy * fs[i].d) / 2, pb[0] - (ux * fs[j].d) / 2, pb[1] - (uy * fs[j].d) / 2]
       }
     }
-    const web = -sdRoundRect(h.x, h.y, L.w, L.h, L.r) - dia(h) / 2
+
+  const edges = [...geo.outer, ...geo.inner].flatMap((poly) => poly.map((a, i) => [a, poly[(i + 1) % poly.length]] as [Pt, Pt]))
+  let edgeWeb = Infinity, edgeSpan: Span | null = null
+  for (const f of fs) {
+    let best = Infinity, pf: Pt = f.a, pe: Pt = f.a
+    for (const [a, b] of edges) {
+      // Skip edges whose bounding box is already further away than the best found.
+      if (Math.min(a[0], b[0]) - f.x1 > best || f.x0 - Math.max(a[0], b[0]) > best ||
+          Math.min(a[1], b[1]) - f.y1 > best || f.y0 - Math.max(a[1], b[1]) > best) continue
+      const [p, q, dist] = closestSegSeg(f.a, f.b, a, b)
+      if (dist < best) { best = dist; pf = p; pe = q }
+    }
+    // A feature whose axis sits outside the material is cut open: its web is negative.
+    const mid: Pt = [(f.a[0] + f.b[0]) / 2, (f.a[1] + f.b[1]) / 2]
+    const out = !geo.outer.some((o) => inside(mid, o)) || geo.inner.some((o) => inside(mid, o))
+    const web = (out ? -best : best) - f.d / 2
     if (web <= edgeWeb + 1e-9) {
-      const [bx, by] = nearestEdge(h.x, h.y, L.w, L.h, L.r)
-      const len = Math.hypot(bx - h.x, by - h.y) || 1
+      const len = Math.hypot(pe[0] - pf[0], pe[1] - pf[1]) || 1
       edgeWeb = Math.min(edgeWeb, web)
-      edgeSpan = [h.x + ((bx - h.x) / len) * (dia(h) / 2), h.y + ((by - h.y) / len) * (dia(h) / 2), bx, by]
+      edgeSpan = [pf[0] + ((pe[0] - pf[0]) / len) * (f.d / 2), pf[1] + ((pe[1] - pf[1]) / len) * (f.d / 2), pe[0], pe[1]]
     }
   }
-  return { w: L.w, h: L.h, holeWeb, edgeWeb, holeSpan, edgeSpan, types: [...new Set(L.holes.map((h) => h.type))] }
+
+  let w = 0, h = 0
+  for (const poly of geo.outer) for (const [x, y] of poly) { w = Math.max(w, x); h = Math.max(h, y) }
+  return { w, h, holeWeb, edgeWeb, holeSpan, edgeSpan, corner: geo.corner, types: [...new Set(geo.features.map((f) => f.type))] }
 }
 
 export function validate(part: Part, ctx: Ctx): Issue[] {
   if (part.type === 'coupon') return []
-  const { holeWeb, edgeWeb, types } = measure(part, ctx)
+  const q = clampPart(part) as GridPart
+  const { holeWeb, edgeWeb, types } = measure(q, ctx)
   const min = ctx.material.minWeb
-  const issues: Issue[] = []
   const name = ctx.material.name
-  // Name the problem, then the change that fixes it.
-  const smaller = types.includes('technic') ? 'switch the hole mix to All M3, ' : ''
+  // Name the problem, then the changes that fix it for this kind of part.
+  const fixes = (extra: (string | false)[]) =>
+    [types.includes('technic') && 'switch the hole mix to All M3', ...extra, 'pick a material with a smaller minimum web']
+      .filter(Boolean).join(', ').replace(/, ([^,]*)$/, ', or $1')
+  const issues: Issue[] = []
   if (holeWeb < min)
     issues.push({
       rule: 'hole-web',
-      message: `Only ${holeWeb.toFixed(2)} mm of material between holes; ${name} needs ${min} mm. To fix: ${smaller}use the checker pattern, or pick a material with a smaller minimum web.`,
+      message: `Only ${holeWeb.toFixed(2)} mm of material between holes; ${name} needs ${min} mm. To fix: ${fixes([
+        q.type === 'plate' && 'use the checker pattern',
+        q.type === 'disc' && 'use fewer ring holes or a larger diameter',
+        q.type === 'angle' && 'use a wider angle',
+        q.type === 'curved' && 'use a larger radius',
+      ])}.`,
     })
   if (edgeWeb < min)
     issues.push({
       rule: 'edge-web',
-      message: `Only ${edgeWeb.toFixed(2)} mm of material between a hole and the edge; ${name} needs ${min} mm. To fix: ${smaller}${part.type === 'plate' ? 'reduce the corner radius, ' : ''}or pick a material with a smaller minimum web.`,
+      message: `Only ${edgeWeb.toFixed(2)} mm of material between a hole and the edge; ${name} needs ${min} mm. To fix: ${fixes([
+        q.type === 'plate' && 'reduce the corner radius',
+        q.type === 'frame' && 'widen the border',
+      ])}.`,
     })
   return issues
-}
-
-// Closest point on the outline of a rounded rect at the origin, for a point inside it.
-function nearestEdge(px: number, py: number, w: number, h: number, r: number): [number, number] {
-  r = Math.max(0, Math.min(r, w / 2, h / 2))
-  const cx = Math.min(Math.max(px, r), w - r), cy = Math.min(Math.max(py, r), h - r)
-  const d = Math.hypot(px - cx, py - cy)
-  if (px !== cx && py !== cy && d > 1e-9) return [cx + ((px - cx) / d) * r, cy + ((py - cy) / d) * r] // corner arc
-  const sides: [number, number, number][] = [[px, 0, py], [px, h, h - py], [0, py, px], [w, py, w - px]]
-  const [x, y] = sides.reduce((a, b) => (b[2] < a[2] ? b : a))
-  return [x, y]
-}
-
-// Signed distance from (px, py) to a rounded rect at the origin; negative inside.
-function sdRoundRect(px: number, py: number, w: number, h: number, r: number) {
-  r = Math.max(0, Math.min(r, w / 2, h / 2))
-  const qx = Math.abs(px - w / 2) - (w / 2 - r)
-  const qy = Math.abs(py - h / 2) - (h / 2 - r)
-  return Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) - r
-}
-
-const TOL = 0.005 // max chord deviation when flattening arcs, mm
-
-export function roundedRect(x: number, y: number, w: number, h: number, r: number): [number, number][] {
-  r = Math.max(0, Math.min(r, w / 2, h / 2))
-  const pts: [number, number][] = []
-  const step = r > TOL ? 2 * Math.acos(1 - TOL / r) : Math.PI / 2
-  const n = Math.ceil(Math.PI / 2 / step)
-  const corners: [number, number, number][] = [
-    [x + w - r, y + r, -Math.PI / 2],
-    [x + w - r, y + h - r, 0],
-    [x + r, y + h - r, Math.PI / 2],
-    [x + r, y + r, Math.PI],
-  ]
-  for (const [cx, cy, a0] of corners)
-    for (let i = 0; i <= n; i++) {
-      const a = a0 + (i / n) * (Math.PI / 2)
-      pts.push([cx + r * Math.cos(a), cy + r * Math.sin(a)])
-    }
-  return pts
 }
 
 export function bbox(paths: Path[]) {
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
   for (const { shape: s } of paths) {
-    const pts: [number, number][] =
-      s.kind === 'circle' ? [[s.cx - s.r, s.cy - s.r], [s.cx + s.r, s.cy + s.r]] : s.pts
+    const pts: Pt[] = s.kind === 'circle' ? [[s.cx - s.r, s.cy - s.r], [s.cx + s.r, s.cy + s.r]] : s.pts
     for (const [x, y] of pts) {
       x0 = Math.min(x0, x); y0 = Math.min(y0, y)
       x1 = Math.max(x1, x); y1 = Math.max(y1, y)

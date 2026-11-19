@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { MATERIALS, PROFILES, bbox, couponKerfs, generate, measure, validate, type Ctx, type Material, type Path } from './geometry'
+import {
+  ANGLES, MATERIALS, PROFILES, bbox, clampPart, couponKerfs, generate, measure, validate,
+  type Ctx, type GridPart, type Material, type Part, type Path,
+} from './geometry'
 import { toSVG } from './svg'
 
 const acrylic = MATERIALS[0]
@@ -88,13 +91,73 @@ describe('validation geometry', () => {
     expect(len(m.holeSpan!)).toBeCloseTo(m.holeWeb, 6) // 4.8
     expect(len(m.edgeSpan!)).toBeCloseTo(m.edgeWeb, 6) // 2.4
     const corner = measure({ type: 'plate', cols: 5, rows: 5, pattern: 'full', radius: 8 }, ctx())
-    expect(corner.edgeWeb).toBeCloseTo(8 - Math.SQRT2 * 4 - 1.6, 6) // nearest edge is the corner arc
+    expect(corner.edgeWeb).toBeCloseTo(8 - Math.SQRT2 * 4 - 1.6, 1) // nearest edge is the corner arc (flattened to 0.005 mm)
     expect(len(corner.edgeSpan!)).toBeCloseTo(corner.edgeWeb, 6)
   })
 
   it('flags holes cut into by a large corner radius', () => {
     const plate = { type: 'plate', cols: 5, rows: 5, pattern: 'full', radius: 15 } as const
     expect(validate(plate, ctx()).map((i) => i.rule)).toEqual(['edge-web'])
+  })
+})
+
+describe('M3 shapes', () => {
+  const holesOf = (paths: Path[]) => paths.filter((p) => p.shape.kind === 'circle').map((p) => p.shape as { cx: number; cy: number; r: number })
+  const parts: Part[] = [
+    { type: 'slotted', holes: 7, slot: 2 },
+    ...ANGLES.map((angle): Part => ({ type: 'angle', armA: 4, armB: 4, angle })),
+    { type: 'gusset', holes: 4 },
+    { type: 'frame', cols: 6, rows: 5, border: 1 },
+    ...(['T', 'X', 'H', 'Y'] as const).map((shape): Part => ({ type: 'connector', shape, arm: 2 })),
+    { type: 'disc', diameter: 5, count: 8 },
+    { type: 'curved', radius: 6, angle: 90 },
+  ]
+
+  it.each(parts)('$type $shape$angle builds one outline and passes on acrylic', (part) => {
+    const paths = generate(part, ctx())
+    expect(paths.filter((p) => p.op === 'outer')).toHaveLength(1)
+    expect(validate(part, ctx())).toEqual([])
+  })
+
+  it('counts holes per shape', () => {
+    const n = (part: Part) => holesOf(generate(part, ctx())).length
+    expect(n({ type: 'angle', armA: 5, armB: 5, angle: 90 })).toBe(9) // shared pivot
+    expect(n({ type: 'slotted', holes: 7, slot: 2 })).toBe(4) // 2 each side of the slot
+    expect(n({ type: 'frame', cols: 6, rows: 5, border: 1 })).toBe(6 * 5 - 4 * 3)
+    expect(n({ type: 'connector', shape: 'X', arm: 2 })).toBe(9)
+    expect(n({ type: 'connector', shape: 'H', arm: 1 })).toBe(7) // two legs of 3, one bar hole
+    expect(n({ type: 'disc', diameter: 5, count: 8 })).toBe(9)
+  })
+
+  it('cuts the slot and frame window as inner contours', () => {
+    const inner = (part: Part) => generate(part, ctx()).filter((p) => p.op === 'inner' && p.shape.kind === 'poly')
+    const slot = inner({ type: 'slotted', holes: 7, slot: 2 })
+    expect(slot).toHaveLength(1)
+    expect(bbox(slot).w).toBeCloseTo(2 * 8 + 2 * 1.5, 3) // slot length plus kerf-corrected hole width
+    expect(inner({ type: 'frame', cols: 6, rows: 5, border: 1 })).toHaveLength(1)
+  })
+
+  it('spaces curved strip holes one pitch apart in a straight line', () => {
+    const h = holesOf(generate({ type: 'curved', radius: 6, angle: 90 }, ctx()))
+    for (let i = 1; i < h.length; i++) expect(Math.hypot(h[i].cx - h[i - 1].cx, h[i].cy - h[i - 1].cy)).toBeCloseTo(8, 6)
+  })
+
+  it('grows a union outline by half the kerf on each side', () => {
+    const part: Part = { type: 'connector', shape: 'X', arm: 2 }
+    const outer = bbox(generate(part, ctx()).filter((p) => p.op === 'outer'))
+    expect(outer.w).toBeCloseTo(measure(part as GridPart, ctx()).w + 0.2, 2)
+  })
+
+  it('clamps out-of-range parameters instead of breaking', () => {
+    expect(clampPart({ type: 'frame', cols: 2, rows: 99, border: 2 })).toMatchObject({ cols: 5, rows: 50 })
+    expect(clampPart({ type: 'angle', armA: NaN, armB: 3, angle: 77 })).toMatchObject({ armA: 2, angle: 90 })
+    expect(clampPart({ type: 'slotted', holes: 5, slot: 9 })).toMatchObject({ slot: 2 })
+  })
+
+  it('flags a crowded disc ring and names the fix', () => {
+    const issues = validate({ type: 'disc', diameter: 3, count: 12 }, ctx())
+    expect(issues.map((i) => i.rule)).toContain('hole-web')
+    expect(issues[0].message).toContain('fewer ring holes')
   })
 })
 
