@@ -8,13 +8,17 @@
 // run and the result with fewest sheets, then least height, wins, so the same kit always nests the same way
 // (the drawer preview and the export agree).
 // ponytail: raster bottom-left fill, not no-fit polygons. Gaps can be up to one cell wider than needed; a kit's
-// cost grows with sheets × pieces × free positions, fine for the kit limits in kit.ts (1000 pieces). Sheets
-// above 1200 mm switch to coarser cells to keep each grid near 2400 cells on its long side (about 6 MB).
+// cost grows with open sheets × pieces × free positions, fine for the kit limits in kit.ts (1000 pieces). Sheets
+// above 1200 mm switch to coarser cells to keep each grid near 2400 cells on its long side (about 17 MB), and
+// only OPEN_SHEETS grids live at once.
 import { bbox, type Path } from './geometry'
 import { referenceSquare, translate, type Sheet } from './layout'
 import { circle, inside, polygonArea, type Pt } from './shapes'
 
 const FINE_CELL = 0.5 // mm
+// Only the newest sheets take pieces; older ones release their grids. This bounds memory to a few grids however
+// many sheets a kit needs (a hostile kit could otherwise hold hundreds of 2000 mm grids at once).
+const OPEN_SHEETS = 4
 const MAX_CELLS = 2400 // cells along a sheet's long side
 // A cutout must clear the spacing on both sides plus 6 mm, the narrowest part in the library (an 8 mm strip
 // less its kerf and a margin), to be worth holding another part.
@@ -142,14 +146,17 @@ function shapeOf(paths: Path[], spacing: number, cell: number): Shape {
 
 /** A sheet being filled: occupied cells, with per-row prefix counts so a run can be tested in O(1). */
 class Board {
-  cols: number; rows: number; occ: Uint8Array; pre: Int32Array
+  cols: number; rows: number; occ: Uint8Array; pre: Uint16Array // a row has at most MAX_CELLS + 1 cells
   placed: { piece: number; paths: Path[] }[] = []
   bottom = 0 // mm, lowest edge used
   used = 0 // mm² of part on the sheet
   constructor(sheet: Sheet, readonly cell: number) {
     this.cols = Math.floor(sheet.w / cell); this.rows = Math.floor(sheet.h / cell)
-    this.occ = new Uint8Array(this.cols * this.rows); this.pre = new Int32Array((this.cols + 1) * this.rows)
+    this.occ = new Uint8Array(this.cols * this.rows); this.pre = new Uint16Array((this.cols + 1) * this.rows)
   }
+  /** Stops taking pieces and frees the grid; the placed paths stay. */
+  close() { this.occ = new Uint8Array(0); this.pre = new Uint16Array(0); this.closed = true }
+  closed = false
   private count(j: number, a: number, b: number) { const o = j * (this.cols + 1); return this.pre[o + b] - this.pre[o + a] }
   /** Rightmost occupied cell in [a, b) of row j, by halving on the prefix counts. */
   private lastOcc(j: number, a: number, b: number) {
@@ -159,6 +166,7 @@ class Board {
   }
   /** Highest, then leftmost, spot where the grown mask fits; null when the sheet has no room. */
   find(s: Shape): [number, number] | null {
+    if (this.closed) return null
     for (let y = 0; y + s.h <= this.rows; y++) {
       let x = 0
       while (x + s.w <= this.cols) {
@@ -214,7 +222,10 @@ export function nest(pieces: Path[][], sheet: Sheet, opts: { refSquare?: boolean
   let best: { boards: Board[]; tooBig: number[]; cost: number } | null = null
   for (const key of [area, longSide, boxArea]) {
     const boards: Board[] = [], tooBig: number[] = []
-    const open = () => { const b = new Board(sheet, cell); if (square) b.mark(square, 0, 0); boards.push(b); return b }
+    const open = () => {
+      boards.at(-OPEN_SHEETS)?.close()
+      const b = new Board(sheet, cell); if (square) b.mark(square, 0, 0); boards.push(b); return b
+    }
     // On a board, the rotation whose grown mask ends highest, then leftmost.
     const tryOn = (b: Board, i: number) => {
       const pick = shapes[i].flatMap((sh) => { const at = b.find(sh); return at ? [{ sh, at }] : [] })

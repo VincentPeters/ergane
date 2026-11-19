@@ -50,6 +50,9 @@ describe('kits', () => {
   it('refuses kits too large to lay out in the browser', async () => {
     const many = { parts: Array.from({ length: 3 }, () => ({ type: 'strip', holes: 3, rows: 1, qty: 500 })) }
     expect(parseKit(JSON.stringify(many))).toMatch(/at most 1000 pieces/)
+    // Pieces are counted as nesting sees them: 30 lines of 48 spacers is 1440 pieces, not 30.
+    const rings = { parts: Array.from({ length: 30 }, () => ({ type: 'spacer', outer: 8, quantity: 48, qty: 1 })) }
+    expect(parseKit(JSON.stringify(rings))).toMatch(/at most 1000 pieces/)
     const dense = { parts: Array.from({ length: 50 }, () => ({ type: 'plate', cols: 50, rows: 50, pattern: 'full', radius: 2, qty: 1 })) }
     expect(parseKit(JSON.stringify(dense))).toMatch(/too many cuts/)
     // A tiny link that inflates past 1 MB is stopped while decompressing.

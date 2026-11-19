@@ -8,6 +8,7 @@ import {
 
 const BUDGET_CTX: Ctx = { profile: PROFILES[0], material: MATERIALS[0], fit: 'normal' }
 import { SHEET_PRESETS, type Sheet } from './layout'
+import { splitPieces } from './nest'
 
 export type KitItem = { part: GridPart; qty: number }
 export type Kit = { name: string; profile: Profile; holeMix: HoleMix; material: Material; fit: Fit; sheet: Sheet; items: KitItem[] }
@@ -87,8 +88,10 @@ export function parseKit(json: string): Kit | string {
     const fields = Object.fromEntries([...PART_KEYS[p.type], 'margin'].filter((k) => k in p).map((k) => [k, p[k]]))
     const part = clampPart({ type: p.type, ...fields, label: p.label === true } as Part) as GridPart
     const qty = Math.round(num(p.qty, 1, 500, 1))
-    pieces += qty
-    paths += qty * generate(part, BUDGET_CTX).length
+    // Count what nesting will handle: a part with several outlines (spacers, box faces) is several pieces.
+    const generated = generate(part, BUDGET_CTX)
+    pieces += qty * splitPieces(generated).length
+    paths += qty * generated.length
     if (pieces > MAX_PIECES) return `A kit can hold at most ${MAX_PIECES} pieces.`
     if (paths > MAX_PATHS) return 'This kit has too many cuts to lay out in the browser. Split it into smaller kits.'
     items.push({ part, qty })

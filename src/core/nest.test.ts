@@ -74,6 +74,14 @@ describe('true-shape nesting', () => {
     expect(Date.now() - t0).toBeLessThan(3000)
   })
 
+  it('keeps working past the open-sheet window, one large part per sheet', () => {
+    const big = pieces({ type: 'plate', cols: 10, rows: 6, pattern: 'border', radius: 2 }, 9) // 80 × 48 mm each
+    const out = nest(big, { w: 90, h: 60, spacing: 2 })
+    expect(out.tooBig).toEqual([])
+    expect(out.sheets).toHaveLength(9)
+    out.sheets.forEach((sh) => expect(outlines(sh)).toHaveLength(1))
+  })
+
   it('turns a part a quarter turn when that is the only way it fits', () => {
     const long = pieces({ type: 'strip', holes: 15, rows: 1 }) // 120 mm long
     expect(nest(long, { w: 30, h: 140, spacing: 2 }).tooBig).toEqual([])
