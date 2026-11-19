@@ -275,3 +275,4 @@ input.num::placeholder { color: var(--mute); }
 .doc code { font-size: 13px; color: var(--chalk); }
 .doc-list dt { color: var(--chalk); font-weight: 600; margin-top: 12px; }
 .doc-list dd { margin: 4px 0 0; }
+.soon.foot { display: flex; flex-wrap: wrap; gap: 4px 14px; }

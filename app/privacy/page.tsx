@@ -30,6 +30,7 @@ export default function Privacy() {
 
       <h2 className="it">Contact</h2>
       <p>Ergane is made by Studio Vinnie, Belgium. Questions about privacy: <a className="link" href="mailto:hello@vinnie.studio">hello@vinnie.studio</a>.</p>
+      <p>Ergane is open source; the code that does all of this is on <a className="link" href="https://github.com/VincentPeters/ergane">GitHub</a>.</p>
       <p className="note-text">Last updated 19 November 2026.</p>
     </main>
   )

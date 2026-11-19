@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security problem
+    url: https://github.com/VincentPeters/ergane/blob/main/SECURITY.md
+    about: Please report security issues privately, not as a public issue.
+  - name: Privacy question
+    url: https://ergane.vinnie.studio/privacy
+    about: What Ergane processes about visitors, and how to reach us.

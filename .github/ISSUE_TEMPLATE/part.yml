@@ -1,0 +1,24 @@
+name: Part or component request
+description: Ask for a new part type, or add a board, motor or other component to the mounting library
+labels: [enhancement]
+body:
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What kind of request
+      options:
+        - A new part type
+        - A component for the mounting library
+        - A correction to an existing component pattern
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: Details
+      description: |
+        For a component, give hole positions in mm from the centre of the hole pattern, hole diameters,
+        any cutouts, and the board outline. Say whether you measured a real part (with calipers) or took
+        the values from a datasheet, and link the datasheet. The JSON format is in CONTRIBUTING.md.
+    validations:
+      required: true

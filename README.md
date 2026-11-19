@@ -17,6 +17,7 @@ npm install
 npm run dev      # http://localhost:3000
 npm test         # Vitest: geometry, kerf, validation, nesting, exporters
 npm run build    # static export to out/
+npm run check    # typecheck + tests + build, the same as CI
 ```
 
 `src/core/` is the geometry core: plain TypeScript with no React, shared by the UI and the exporters.
@@ -60,6 +61,12 @@ run `vercel promote <new-deployment-url> --scope vincentpeters-projects` to resu
 
 Nothing is stored server-side, so there is never data to restore: visitors' kits live in their own browsers.
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Bugs and part requests go in
+[issues](https://github.com/VincentPeters/ergane/issues); security problems follow [SECURITY.md](SECURITY.md).
+
 ## Licence
 
-Not chosen yet; see the launch checklist.
+Code: [MIT](LICENSE). The component library, starter kit and design system:
+[CC BY-SA 4.0](LICENSE-DESIGNS.md). Files you export for your own parts are yours.

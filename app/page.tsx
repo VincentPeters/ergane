@@ -18,6 +18,8 @@ import {
 } from '../src/core/geometry'
 import { Chart, Mark, type Fault } from './Chart'
 
+const REPO = 'https://github.com/VincentPeters/ergane'
+
 type Kind = Part['type']
 type ShapeKind = Exclude<Kind, 'coupon'>
 type Value = number | string
@@ -327,7 +329,11 @@ export default function Page() {
           </section>
         ))}
         <p className="soon">Every part bolts to every other on the same grid.</p>
-        <p className="soon"><a className="link inline" href="/privacy">Privacy</a></p>
+        <p className="soon foot">
+          <a className="link inline" href={REPO}>Source on GitHub</a>
+          <a className="link inline" href={`${REPO}/issues/new/choose`}>Report a problem</a>
+          <a className="link inline" href="/privacy">Privacy</a>
+        </p>
       </nav>
 
       <main className="stage">
