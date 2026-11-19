@@ -44,7 +44,7 @@ export type Part =
   | { type: 'strip'; holes: number; rows: number; label?: boolean }
   | { type: 'plate'; cols: number; rows: number; pattern: Pattern; radius: number; label?: boolean }
   | { type: 'coupon' }
-type GridPart = Exclude<Part, { type: 'coupon' }>
+export type GridPart = Exclude<Part, { type: 'coupon' }>
 
 export type Ctx = { profile: Profile; material: Material; fit: Fit; holeMix?: HoleMix }
 
@@ -108,7 +108,7 @@ export function generate(part: Part, ctx: Ctx): Path[] {
 }
 
 const LABEL_H = 2.5 // max cap height, mm
-const LABEL_CLEAR = 0.4 // gap between text and hole edge, mm
+const LABEL_CLEAR = 0.8 // gap between text and hole edge, mm, so the label never reads as touching a ring
 
 // Engraved between the first two holes of the first row, shrunk to fit the gap. Skipped below 1 mm.
 function label(part: GridPart, L: Layout, ctx: Ctx): Path[] {
@@ -131,7 +131,7 @@ export function couponKerfs(kerf: number) {
 function coupon(ctx: Ctx): Path[] {
   const types: HoleType[] = ctx.profile.mixable ? ['m3', 'technic'] : [ctx.profile.hole]
   const kerfs = couponKerfs(ctx.material.kerf)
-  const gutter = 12, col = 10, row = 16, top = 6
+  const gutter = 12, col = 11, row = 16, top = 6 // col leaves ~4 mm between 2.2 mm labels
   const paths: Path[] = []
   types.forEach((t, r) => {
     const y = top + r * row
@@ -139,7 +139,7 @@ function coupon(ctx: Ctx): Path[] {
     kerfs.forEach((k, c) => {
       const x = gutter + 5 + c * col
       paths.push({ op: 'inner', shape: { kind: 'circle', cx: x, cy: y, r: holeRadius(HOLES[t].d, 'normal', k) } })
-      paths.push(...engrave(k.toFixed(2), x, y + 5.5, 2.5))
+      paths.push(...engrave(k.toFixed(2), x, y + 5.5, 2.2))
     })
   })
   paths.push(outline(gutter + 5 + 6 * col + 6, top + (types.length - 1) * row + 9, 3, ctx.material.kerf))
@@ -147,31 +147,79 @@ function coupon(ctx: Ctx): Path[] {
 }
 
 export type Issue = { rule: 'hole-web' | 'edge-web'; message: string }
+export const RULE_COUNT = 2
+
+/** A web as a line across the material, from one cut edge to the other, in nominal part coordinates. */
+export type Span = [number, number, number, number]
+
+/** Nominal size and smallest webs of a part as cut. holeWeb is Infinity with a single hole. */
+export type Measure = {
+  w: number; h: number; holeWeb: number; edgeWeb: number; types: HoleType[]
+  holeSpan: Span | null; edgeSpan: Span | null // where the smallest webs are, for drawing failures
+}
 
 // Webs are measured on the hole as cut (nominal + fit); kerf correction cancels out after cutting.
-export function validate(part: Part, ctx: Ctx): Issue[] {
-  if (part.type === 'coupon') return []
+export function measure(part: GridPart, ctx: Ctx): Measure {
   const L = layout(part, ctx)
   const dia = (h: Hole) => HOLES[h.type].d + FIT_OFFSET[ctx.fit]
-  const min = ctx.material.minWeb
   const at = new Map(L.holes.map((h) => [`${h.i},${h.j}`, h]))
-  let holeWeb = Infinity
-  let edgeWeb = Infinity
+  let holeWeb = Infinity, edgeWeb = Infinity
+  let holeSpan: Span | null = null, edgeSpan: Span | null = null
   for (const h of L.holes) {
     // Nearest holes on a grid are the four forward neighbours (diagonals matter for checker).
     for (const [di, dj] of [[1, 0], [0, 1], [1, 1], [1, -1]]) {
       const n = at.get(`${h.i + di},${h.j + dj}`)
-      if (n) holeWeb = Math.min(holeWeb, Math.hypot(n.x - h.x, n.y - h.y) - (dia(h) + dia(n)) / 2)
+      if (!n) continue
+      const dist = Math.hypot(n.x - h.x, n.y - h.y)
+      const web = dist - (dia(h) + dia(n)) / 2
+      // On ties the last pair wins, keeping the drawn fault away from the label between holes 1 and 2.
+      if (web <= holeWeb + 1e-9) {
+        const ux = (n.x - h.x) / dist, uy = (n.y - h.y) / dist
+        holeWeb = Math.min(holeWeb, web)
+        holeSpan = [h.x + (ux * dia(h)) / 2, h.y + (uy * dia(h)) / 2, n.x - (ux * dia(n)) / 2, n.y - (uy * dia(n)) / 2]
+      }
     }
-    edgeWeb = Math.min(edgeWeb, -sdRoundRect(h.x, h.y, L.w, L.h, L.r) - dia(h) / 2)
+    const web = -sdRoundRect(h.x, h.y, L.w, L.h, L.r) - dia(h) / 2
+    if (web <= edgeWeb + 1e-9) {
+      const [bx, by] = nearestEdge(h.x, h.y, L.w, L.h, L.r)
+      const len = Math.hypot(bx - h.x, by - h.y) || 1
+      edgeWeb = Math.min(edgeWeb, web)
+      edgeSpan = [h.x + ((bx - h.x) / len) * (dia(h) / 2), h.y + ((by - h.y) / len) * (dia(h) / 2), bx, by]
+    }
   }
+  return { w: L.w, h: L.h, holeWeb, edgeWeb, holeSpan, edgeSpan, types: [...new Set(L.holes.map((h) => h.type))] }
+}
+
+export function validate(part: Part, ctx: Ctx): Issue[] {
+  if (part.type === 'coupon') return []
+  const { holeWeb, edgeWeb, types } = measure(part, ctx)
+  const min = ctx.material.minWeb
   const issues: Issue[] = []
   const name = ctx.material.name
+  // Name the problem, then the change that fixes it.
+  const smaller = types.includes('technic') ? 'switch the hole mix to All M3, ' : ''
   if (holeWeb < min)
-    issues.push({ rule: 'hole-web', message: `Web between holes is ${holeWeb.toFixed(2)} mm, below the ${min} mm minimum for ${name}.` })
+    issues.push({
+      rule: 'hole-web',
+      message: `Only ${holeWeb.toFixed(2)} mm of material between holes; ${name} needs ${min} mm. To fix: ${smaller}use the checker pattern, or pick a material with a smaller minimum web.`,
+    })
   if (edgeWeb < min)
-    issues.push({ rule: 'edge-web', message: `Web between hole and edge is ${edgeWeb.toFixed(2)} mm, below the ${min} mm minimum for ${name}.` })
+    issues.push({
+      rule: 'edge-web',
+      message: `Only ${edgeWeb.toFixed(2)} mm of material between a hole and the edge; ${name} needs ${min} mm. To fix: ${smaller}${part.type === 'plate' ? 'reduce the corner radius, ' : ''}or pick a material with a smaller minimum web.`,
+    })
   return issues
+}
+
+// Closest point on the outline of a rounded rect at the origin, for a point inside it.
+function nearestEdge(px: number, py: number, w: number, h: number, r: number): [number, number] {
+  r = Math.max(0, Math.min(r, w / 2, h / 2))
+  const cx = Math.min(Math.max(px, r), w - r), cy = Math.min(Math.max(py, r), h - r)
+  const d = Math.hypot(px - cx, py - cy)
+  if (px !== cx && py !== cy && d > 1e-9) return [cx + ((px - cx) / d) * r, cy + ((py - cy) / d) * r] // corner arc
+  const sides: [number, number, number][] = [[px, 0, py], [px, h, h - py], [0, py, px], [w, py, w - px]]
+  const [x, y] = sides.reduce((a, b) => (b[2] < a[2] ? b : a))
+  return [x, y]
 }
 
 // Signed distance from (px, py) to a rounded rect at the origin; negative inside.

@@ -9,10 +9,15 @@ const LAYERS: [Op, string, string][] = [
 
 const f = (n: number) => +n.toFixed(4)
 
+/** SVG path data for a poly or line shape, rounded to 0.1 µm so output is identical on every JS engine. */
+export function pathData(s: Exclude<Path['shape'], { kind: 'circle' }>) {
+  return `M${s.pts.map(([x, y]) => `${f(x)} ${f(y)}`).join('L')}${s.kind === 'poly' ? 'Z' : ''}`
+}
+
 function shape(p: Path) {
   const s = p.shape
   if (s.kind === 'circle') return `<circle cx="${f(s.cx)}" cy="${f(s.cy)}" r="${f(s.r)}"/>`
-  return `<path d="M${s.pts.map(([x, y]) => `${f(x)} ${f(y)}`).join('L')}${s.kind === 'poly' ? 'Z' : ''}"/>`
+  return `<path d="${pathData(s)}"/>`
 }
 
 export function toSVG(paths: Path[]): string {

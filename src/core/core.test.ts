@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { MATERIALS, PROFILES, bbox, couponKerfs, generate, validate, type Ctx, type Material, type Path } from './geometry'
+import { MATERIALS, PROFILES, bbox, couponKerfs, generate, measure, validate, type Ctx, type Material, type Path } from './geometry'
 import { toSVG } from './svg'
 
 const acrylic = MATERIALS[0]
@@ -82,6 +82,16 @@ describe('profiles and hole mix', () => {
 })
 
 describe('validation geometry', () => {
+  it('locates the smallest webs as spans of the measured length', () => {
+    const m = measure(strip11, ctx())
+    const len = ([x1, y1, x2, y2]: number[]) => Math.hypot(x2 - x1, y2 - y1)
+    expect(len(m.holeSpan!)).toBeCloseTo(m.holeWeb, 6) // 4.8
+    expect(len(m.edgeSpan!)).toBeCloseTo(m.edgeWeb, 6) // 2.4
+    const corner = measure({ type: 'plate', cols: 5, rows: 5, pattern: 'full', radius: 8 }, ctx())
+    expect(corner.edgeWeb).toBeCloseTo(8 - Math.SQRT2 * 4 - 1.6, 6) // nearest edge is the corner arc
+    expect(len(corner.edgeSpan!)).toBeCloseTo(corner.edgeWeb, 6)
+  })
+
   it('flags holes cut into by a large corner radius', () => {
     const plate = { type: 'plate', cols: 5, rows: 5, pattern: 'full', radius: 15 } as const
     expect(validate(plate, ctx()).map((i) => i.rule)).toEqual(['edge-web'])

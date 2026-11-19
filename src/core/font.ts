@@ -1,7 +1,8 @@
 // Single-stroke font for engraving. Each glyph is strokes on a 4 x 6 grid (y down), ";" separates strokes.
 // Single strokes engrave as one pass of lines, unlike outline fonts that need filling.
 const GLYPHS: Record<string, string> = {
-  '0': '0,0 4,0 4,6 0,6 0,0;4,0 0,6',
+  // Unslashed, octagonal zero: a slash would read as diameter notation next to holes, a square as O.
+  '0': '1,0 3,0 4,1 4,5 3,6 1,6 0,5 0,1 1,0',
   '1': '1,1 2,0 2,6;1,6 3,6',
   '2': '0,0 4,0 4,3 0,3 0,6 4,6',
   '3': '0,0 4,0 4,6 0,6;0,3 4,3',
